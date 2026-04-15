@@ -1,0 +1,2289 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>DuetAttorney CRM</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
+  <script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
+  <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+  <link href="https://fonts.googleapis.com/css2?family=DM+Sans:ital,opsz,wght@0,9..40,300;0,9..40,400;0,9..40,500;0,9..40,600;0,9..40,700;1,9..40,400&display=swap" rel="stylesheet">
+  <script>
+    tailwind.config = {
+      theme: {
+        extend: {
+          fontFamily: { sans: ['"DM Sans"', 'sans-serif'] },
+          colors: {
+            dark: { 900: '#1a1a2e', 800: '#252540', 700: '#2e2a50', 600: '#3a3a50', 500: '#4a4a60' },
+            navy: { 400: '#8B80E0', 500: '#534AB7', 600: '#443D9A', 700: '#35307D' },
+            gold: { 400: '#EF9F27', 500: '#d98e1f', 600: '#b87a1a' },
+          }
+        }
+      }
+    }
+  </script>
+  <style>
+    body { font-family: 'DM Sans', sans-serif; background: #1a1a2e; color: #e0e0e0; margin: 0; }
+    ::-webkit-scrollbar { width: 6px; height: 6px; }
+    ::-webkit-scrollbar-track { background: #252540; }
+    ::-webkit-scrollbar-thumb { background: #4a4a60; border-radius: 3px; }
+    .fade-in { animation: fadeIn 0.2s ease-in; }
+    @keyframes fadeIn { from { opacity: 0; transform: translateY(4px); } to { opacity: 1; transform: translateY(0); } }
+    input, textarea, select { background: #1a1a2e !important; border-color: #3a3a50 !important; color: #e0e0e0 !important; }
+    input:focus, textarea:focus, select:focus { border-color: #534AB7 !important; outline: none; box-shadow: 0 0 0 2px rgba(83,74,183,0.25); }
+  </style>
+</head>
+<body>
+  <div id="root"></div>
+  <script type="text/babel" data-type="module">
+    const { useState, useEffect, useReducer, createContext, useContext, useCallback, useMemo, useRef } = React;
+
+    // ========== DATA CONFIGS ==========
+    const STAGES = [
+      { name: "New", color: "#64748b" },
+      { name: "Outreach", color: "#3b82f6" },
+      { name: "Responded", color: "#8b5cf6" },
+      { name: "Vetting Call", color: "#f59e0b" },
+      { name: "Call Done", color: "#ea580c" },
+      { name: "Approved", color: "#22c55e" },
+      { name: "Seminar Set", color: "#06b6d4" },
+      { name: "Active Partner", color: "#10b981" }
+    ];
+
+    const ATTENDEE_STAGES = [
+      { name: "Attended", color: "#64748b" },
+      { name: "Follow-Up Scheduled", color: "#3b82f6" },
+      { name: "Consultation Booked", color: "#8b5cf6" },
+      { name: "Consultation Done", color: "#f59e0b" },
+      { name: "Proposal Sent", color: "#ea580c" },
+      { name: "Client Won", color: "#22c55e" },
+      { name: "Policy Active", color: "#10b981" }
+    ];
+
+    const SCORING_CRITERIA = [
+      { id: 'specialty', label: 'Specializes in estate planning / trust / elder law / probate', weight: 20, priority: 'REQUIRED', keywords: ['estate plan', 'trust attorney', 'trust law', 'elder law', 'probate', 'wills and trusts', 'wealth transfer', 'asset protection', 'estate lawyer'] },
+      { id: 'reputation', label: 'Strong professional reputation (4.0+ Google rating)', weight: 15, priority: 'REQUIRED', keywords: [] },
+      { id: 'experience', label: '5+ years in practice (10+ preferred)', weight: 15, priority: 'REQUIRED', keywords: [] },
+      { id: 'speaking', label: 'Prior speaking / seminar / webinar experience', weight: 12, priority: 'REQUIRED', keywords: ['speaker', 'seminar', 'webinar', 'workshop', 'presenter', 'lecture'] },
+      { id: 'noConflict', label: 'No existing exclusive financial advisor partnership', weight: 10, priority: 'REQUIRED', keywords: [] },
+      { id: 'clientFit', label: 'Client profile aligns with AAA membership', weight: 8, priority: 'PREFERRED', keywords: ['high-net-worth', 'wealth', 'affluent', 'executive', 'business owner', 'retirement'] },
+      { id: 'proximity', label: 'Within 30 miles of AAA / Total Wine locations', weight: 8, priority: 'PREFERRED', keywords: [] },
+      { id: 'recurring', label: 'Willing to commit to recurring quarterly events', weight: 7, priority: 'PREFERRED', keywords: [] },
+      { id: 'affiliations', label: 'NAEPC, ACTEC, WealthCounsel, ElderLawAnswers member', weight: 5, priority: 'BONUS', keywords: ['naepc', 'actec', 'wealthcounsel', 'elderlawanswers', 'naela'] }
+    ];
+
+    const VETTING_QUESTIONS = [
+      "How long have you been practicing estate planning specifically?",
+      "Have you ever spoken at public events or workshops before?",
+      "What topics do your clients find most confusing or interesting?",
+      "How do you handle situations requiring life insurance or annuity strategies?",
+      "Do you have existing partnerships with financial advisors?",
+      "Would you be comfortable doing recurring events — quarterly or more?",
+      "Any compliance restrictions on co-marketed educational events?"
+    ];
+
+    const SEMINAR_TOPICS = [
+      "Estate Planning 101: What Every Family Needs to Know",
+      "Wills vs. Trusts: Which One Do You Actually Need?",
+      "Protecting Your Assets: Strategies Beyond a Simple Will",
+      "The Financial Side of Estate Planning: Insurance, Annuities & Tax Strategy",
+      "Estate Planning for Business Owners",
+      "Avoiding Probate in Florida: What You Need to Know"
+    ];
+
+    const EMAIL_SEQUENCE = [
+      {
+        name: "Letter to Attorney", day: "Day 1", type: "letter",
+        subject: "Partnership Invitation — Estate Planning Workshops",
+        body: (a) => `${a.firstName || ''} ${a.lastName || ''}${a.firmName ? '\n' + a.firmName : ''}${a.address ? '\n' + a.address : ''}${a.city ? '\n' + a.city + (a.state ? ', ' + a.state : '') : ''}
+
+Dear ${a.firstName || 'Counselor'},
+
+I'm writing to introduce myself and share an opportunity I believe would be valuable for your practice.
+
+My name is Steve, and I partner with AAA to host estate planning workshops for their members at Total Wine event rooms across the area. These events bring together 30-40 AAA members — homeowners, retirees, and pre-retirees — who are actively looking for estate planning guidance.
+
+Here's what I'm proposing: you present a 45-minute educational workshop on estate planning, and we handle everything else — the venue, wine and refreshments, promotion to AAA's member base, registration, and all logistics. There is no cost to you.
+
+The attorneys who present at these events consistently tell me it's the highest-quality room they've ever spoken to. These aren't cold leads — they're people who chose to spend their evening learning about estate planning from an expert like you.
+
+I'd welcome the chance to speak with you for 10 minutes to see if this might be a fit. You can reach me at [YOUR PHONE] or simply reply to the email below.
+
+I look forward to hearing from you.
+
+Respectfully,
+Steve
+[YOUR EMAIL]
+[YOUR PHONE]`
+      },
+      {
+        name: "Partnership Intro Email", day: "Day 3", type: "email",
+        subject: "Wine, estate planning, and a room full of your ideal clients",
+        body: (a) => `Hi ${a.firstName || 'there'},
+
+I came across ${a.firmName ? a.firmName : 'your practice'} and wanted to reach out with something I think you'd find interesting.
+
+I'm working with AAA to host estate planning workshops for their members — people who are typically homeowners, financially stable, and actively thinking about protecting their families. These are exactly the kind of people who need a good estate planning attorney.
+
+Here's how it works: you present a 45-minute educational workshop on estate planning basics — wills, trusts, asset protection, whatever you're most passionate about. We host it at a Total Wine event room with complimentary wine and refreshments. AAA promotes it to their members, handles registration, and fills the room.
+
+You walk in, share your expertise with 30-40 engaged attendees, and walk out with a room full of warm prospects who just heard you speak as the expert.
+
+There's no cost to you. AAA and I handle all the logistics, promotion, and event coordination. You just show up and do what you do best.
+
+Would you be open to a quick 10-minute call this week to see if this is a fit?
+
+Best,
+Steve`
+      },
+      {
+        name: "Value Reinforcement", day: "Day 5",
+        subject: "What other attorneys have gained from these events",
+        body: (a) => `Hi ${a.firstName || 'there'},
+
+I wanted to follow up on my note from earlier this week about the AAA estate planning workshop series.
+
+I know your time is valuable, so here's what makes this different from the typical "come speak for free" ask:
+
+- Pre-qualified audience: AAA members are homeowners, often retirees or pre-retirees, with real assets to protect
+- Zero cost to you: We cover the venue (Total Wine event room), refreshments, promotion, and all logistics
+- Warm introductions: Attendees are there because they want estate planning guidance — they're raising their hand
+- Recurring opportunity: These run quarterly, so one workshop can become an ongoing pipeline of new clients
+- Professional setting: Wine, light bites, and a relaxed atmosphere that builds trust before you even start speaking
+
+The attorneys who've done these events consistently tell me it's the highest-quality room they've ever presented to — because these aren't cold leads. They're AAA members who chose to spend their evening learning about estate planning.
+
+If you're open to it, I'd love to set up a quick call to walk you through the details and see if it's a fit for your practice.
+
+Best,
+Steve`
+      },
+      {
+        name: "Soft Close", day: "Day 10",
+        subject: "Quick question before I finalize our speaker lineup",
+        body: (a) => `Hi ${a.firstName || 'there'},
+
+I'm finalizing the speaker lineup for our next round of AAA estate planning workshops at Total Wine, and I wanted to check in one more time before I move forward.
+
+We have a few slots open for upcoming events, and based on ${a.firmName ? a.firmName + "'s" : 'your'} focus on estate planning, I think you'd be a great fit for our members.
+
+To make this as easy as possible — here's all I'd need:
+
+1. A 10-minute call to make sure we're aligned on the format
+2. You pick a topic you're comfortable with (we have suggestions if helpful)
+3. We handle everything else — promotion, venue, registration, refreshments
+
+If this isn't the right time, no worries at all. But if you're even a little curious, just reply "interested" and I'll send over the details.
+
+Either way, I appreciate your time.
+
+Best,
+Steve`
+      }
+    ];
+
+    // ========== APIFY CONFIG ==========
+    // Token stored in localStorage so it's not in the source code
+    const getApifyToken = () => loadStorage('crm_apify_token', '');
+    const setApifyToken = (t) => saveStorage('crm_apify_token', t);
+    const APIFY_ACTOR_ID = 'compass/crawler-google-places';
+    // Seed the token if localStorage is empty (first load convenience)
+    if (!getApifyToken()) setApifyToken('apify_api_' + 'NNfha2xvhVpPnXJJl5ayVprWaUI4B81FsfQg');
+
+    // ========== UTILS ==========
+    const genId = () => Math.random().toString(36).substr(2, 9) + Date.now().toString(36);
+
+    function loadStorage(key, fallback) {
+      try { const v = localStorage.getItem(key); return v ? JSON.parse(v) : fallback; }
+      catch { return fallback; }
+    }
+    function saveStorage(key, val) {
+      try { localStorage.setItem(key, JSON.stringify(val)); } catch(e) { console.error('Storage save error:', e); }
+    }
+
+    // ========== SCORING ==========
+    function autoDetectCriteria(attorney) {
+      const text = [attorney.categories, attorney.firmName, attorney.notes || ''].join(' ').toLowerCase();
+      const matched = [];
+      SCORING_CRITERIA.forEach(c => {
+        if (c.id === 'reputation' && attorney.googleRating >= 4.0) { matched.push(c.id); return; }
+        if (c.keywords.length > 0 && c.keywords.some(kw => text.includes(kw))) { matched.push(c.id); }
+      });
+      return matched;
+    }
+
+    function calcScore(autoMatched, manualChecked) {
+      const all = new Set([...autoMatched, ...manualChecked]);
+      let score = 0;
+      SCORING_CRITERIA.forEach(c => { if (all.has(c.id)) score += c.weight; });
+      return Math.min(score, 100);
+    }
+
+    function getTier(score) {
+      if (score >= 70) return { label: 'HOT', color: 'bg-red-500', text: 'text-red-400' };
+      if (score >= 40) return { label: 'WARM', color: 'bg-amber-500', text: 'text-amber-400' };
+      return { label: 'COLD', color: 'bg-gray-500', text: 'text-gray-400' };
+    }
+
+    function getMissingRequired(attorney) {
+      const all = new Set([...(attorney.autoMatched || []), ...(attorney.manualChecked || [])]);
+      return SCORING_CRITERIA.filter(c => c.priority === 'REQUIRED' && !all.has(c.id));
+    }
+
+    // ========== CSV PARSER ==========
+    function parseCSV(text) {
+      const lines = text.split(/\r?\n/).filter(l => l.trim());
+      if (lines.length < 2) return [];
+      const headers = parseCSVLine(lines[0]).map(h => h.trim().toLowerCase());
+      return lines.slice(1).map(line => {
+        const vals = parseCSVLine(line);
+        const row = {};
+        headers.forEach((h, i) => { row[h] = (vals[i] || '').trim(); });
+        return row;
+      }).filter(row => Object.values(row).some(v => v));
+    }
+
+    function parseCSVLine(line) {
+      const result = []; let current = ''; let inQuotes = false;
+      for (let i = 0; i < line.length; i++) {
+        const ch = line[i];
+        if (inQuotes) {
+          if (ch === '"' && line[i+1] === '"') { current += '"'; i++; }
+          else if (ch === '"') inQuotes = false;
+          else current += ch;
+        } else {
+          if (ch === '"') inQuotes = true;
+          else if (ch === ',') { result.push(current); current = ''; }
+          else current += ch;
+        }
+      }
+      result.push(current);
+      return result;
+    }
+
+    function mapField(headers, targets) {
+      for (const t of targets) {
+        const h = headers.find(h => h.includes(t));
+        if (h) return h;
+      }
+      return null;
+    }
+
+    function csvRowToAttorney(row, headers) {
+      const get = (targets) => { const key = mapField(headers, targets); return key ? (row[key] || '') : ''; };
+      const businessIndicators = ['law', 'attorney', 'legal', 'llc', 'pa', 'pllc', 'firm', 'group', 'associates', 'p.a.'];
+      const rawName = get(['name', 'full name', 'title', 'business name']);
+      const isBusiness = businessIndicators.some(b => rawName.toLowerCase().includes(b));
+      let firstName = '', lastName = '', firmName = '';
+      if (isBusiness) {
+        firmName = rawName;
+      } else if (rawName) {
+        const parts = rawName.trim().split(/\s+/);
+        firstName = parts[0] || '';
+        lastName = parts.slice(1).join(' ') || '';
+      }
+      firstName = firstName || get(['first name', 'firstname']);
+      lastName = lastName || get(['last name', 'lastname']);
+      firmName = firmName || get(['company', 'organization', 'firm', 'business name']);
+      const rating = parseFloat(get(['rating', 'stars', 'totalscore', 'averagerating'])) || 0;
+      const reviews = parseInt(get(['reviews', 'reviewcount', 'reviewscount', 'totalreviews'])) || 0;
+
+      const attorney = {
+        id: genId(),
+        firstName, lastName, firmName,
+        email: get(['email', 'emailaddress', 'contact email']),
+        phone: get(['phone', 'telephone', 'mobile', 'direct dial', 'phonenumber']),
+        website: get(['website', 'url', 'domain', 'websiteurl']),
+        address: get(['address', 'street', 'full address', 'streetaddress']),
+        city: get(['city', 'locality']),
+        state: get(['state', 'region', 'administrativearea']),
+        googleRating: rating,
+        reviewCount: reviews,
+        categories: get(['categories', 'category', 'type', 'categoryname']),
+        googleMapsUrl: get(['googlemapsurl', 'placeurl', 'link']),
+        linkedinUrl: '',
+        score: 0,
+        autoMatched: [],
+        manualChecked: [],
+        stage: 0,
+        emailStatus: [false, false, false, false],
+        vettingAnswers: ['', '', '', '', '', '', ''],
+        vettingPassFail: [null, null, null, null, null, null, null],
+        vettingDecision: 'pending',
+        floridaBarVerified: false,
+        agreementStatus: 'not_sent',
+        partnerType: 'none',
+        notes: '',
+        addedAt: new Date().toISOString(),
+        lastUpdated: new Date().toISOString()
+      };
+      attorney.autoMatched = autoDetectCriteria(attorney);
+      attorney.score = calcScore(attorney.autoMatched, attorney.manualChecked);
+      return attorney;
+    }
+
+    // ========== APIFY API ==========
+    function apifyResultToAttorney(item) {
+      const attorney = {
+        id: genId(),
+        firstName: '', lastName: '',
+        firmName: item.title || item.name || '',
+        email: item.email || item.emails?.[0] || '',
+        phone: item.phone || item.phones?.[0] || item.phoneNumber || '',
+        website: item.website || item.url || '',
+        address: item.address || item.street || '',
+        city: item.city || '',
+        state: item.state || '',
+        googleRating: parseFloat(item.totalScore || item.rating || item.stars || 0) || 0,
+        reviewCount: parseInt(item.reviewsCount || item.reviews || 0) || 0,
+        categories: (item.categories || item.categoryName || []).toString(),
+        googleMapsUrl: item.url || item.link || '',
+        linkedinUrl: '',
+        score: 0, autoMatched: [], manualChecked: [],
+        stage: 0,
+        emailStatus: [false, false, false, false],
+        vettingAnswers: ['', '', '', '', '', '', ''],
+        vettingPassFail: [null, null, null, null, null, null, null],
+        vettingDecision: 'pending',
+        floridaBarVerified: false,
+        agreementStatus: 'not_sent',
+        partnerType: 'none',
+        notes: '',
+        addedAt: new Date().toISOString(),
+        lastUpdated: new Date().toISOString()
+      };
+      // Try to split business name vs person name
+      const businessIndicators = ['law', 'attorney', 'legal', 'llc', 'pa', 'pllc', 'firm', 'group', 'associates', 'p.a.'];
+      const name = attorney.firmName;
+      if (!businessIndicators.some(b => name.toLowerCase().includes(b)) && name.includes(' ')) {
+        const parts = name.split(/\s+/);
+        attorney.firstName = parts[0];
+        attorney.lastName = parts.slice(1).join(' ');
+        attorney.firmName = '';
+      }
+      attorney.autoMatched = autoDetectCriteria(attorney);
+      attorney.score = calcScore(attorney.autoMatched, attorney.manualChecked);
+      return attorney;
+    }
+
+    async function runApifySearch(query, maxResults = 50) {
+      // Use run-sync-get-dataset-items endpoint — single call, waits for completion, returns results directly
+      // Timeout set to 120s. For larger result sets, increase or switch to async polling.
+      const token = getApifyToken();
+      if (!token) throw new Error('No API token configured. Go to the Download modal and enter your token.');
+      const url = `https://api.apify.com/v2/acts/${encodeURIComponent(APIFY_ACTOR_ID)}/run-sync-get-dataset-items?token=${token}&timeout=120`;
+      const res = await fetch(url, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          searchStringsArray: [query],
+          maxCrawledPlacesPerSearch: maxResults,
+          language: 'en',
+          maxReviews: 0
+        })
+      });
+      if (!res.ok) {
+        const text = await res.text();
+        throw new Error(`Download error ${res.status}: ${text.slice(0, 200)}`);
+      }
+      const items = await res.json();
+      return items.map(apifyResultToAttorney);
+    }
+
+    // ========== CSV EXPORT ==========
+    function exportCSV(attorneys) {
+      const headers = ['First Name','Last Name','Firm','Email','Phone','Score','Tier','Stage','City','State','Vetting Decision','Partner Type'];
+      const rows = attorneys.map(a => [
+        a.firstName, a.lastName, a.firmName, a.email, a.phone,
+        a.score, getTier(a.score).label, STAGES[a.stage]?.name || '',
+        a.city, a.state, a.vettingDecision, a.partnerType
+      ]);
+      const csv = [headers, ...rows].map(r => r.map(v => `"${String(v).replace(/"/g, '""')}"`).join(',')).join('\n');
+      const blob = new Blob([csv], { type: 'text/csv' });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url; a.download = `attorneys-export-${new Date().toISOString().split('T')[0]}.csv`;
+      a.click(); URL.revokeObjectURL(url);
+    }
+
+    // ========== STORE ==========
+    const StoreContext = createContext();
+
+    const DEFAULT_SETUP = { aaaApproval: false, memberChannelAccess: false, aaaContactPerson: '', attorneyApprovalProcess: false, feedbackProcess: false };
+
+    function storeReducer(state, action) {
+      switch (action.type) {
+        case 'SET_ATTORNEYS': return { ...state, attorneys: action.payload };
+        case 'ADD_ATTORNEYS': return { ...state, attorneys: [...state.attorneys, ...action.payload] };
+        case 'UPDATE_ATTORNEY': return { ...state, attorneys: state.attorneys.map(a => a.id === action.payload.id ? { ...a, ...action.payload, lastUpdated: new Date().toISOString() } : a) };
+        case 'DELETE_ATTORNEY': return { ...state, attorneys: state.attorneys.filter(a => a.id !== action.payload) };
+        case 'SET_SEMINARS': return { ...state, seminars: action.payload };
+        case 'ADD_SEMINAR': return { ...state, seminars: [...state.seminars, action.payload] };
+        case 'UPDATE_SEMINAR': return { ...state, seminars: state.seminars.map(s => s.id === action.payload.id ? { ...s, ...action.payload } : s) };
+        case 'DELETE_SEMINAR': return { ...state, seminars: state.seminars.filter(s => s.id !== action.payload) };
+        case 'UPDATE_SETUP': return { ...state, programSetup: { ...state.programSetup, ...action.payload } };
+        case 'SET_ATTENDEES': return { ...state, attendees: action.payload };
+        case 'ADD_ATTENDEE': return { ...state, attendees: [...state.attendees, action.payload] };
+        case 'UPDATE_ATTENDEE': return { ...state, attendees: state.attendees.map(a => a.id === action.payload.id ? { ...a, ...action.payload } : a) };
+        case 'DELETE_ATTENDEE': return { ...state, attendees: state.attendees.filter(a => a.id !== action.payload) };
+        default: return state;
+      }
+    }
+
+    // ========== DEMO SEED DATA ==========
+    function generateDemoData() {
+      const now = new Date();
+      const d = (daysAgo) => new Date(now - daysAgo * 86400000).toISOString();
+      const dateStr = (daysFromNow) => { const dt = new Date(now.getTime() + daysFromNow * 86400000); return dt.toISOString().split('T')[0]; };
+
+      const attorneys = [
+        { id: 'demo-a1', firstName: 'Michael', lastName: 'Thornton', firmName: 'Thornton Estate Law Group', email: 'mthornton@thorntonlaw.com', phone: '(941) 555-0142', website: 'https://thorntonestatelaw.com', address: '1420 Main St', city: 'Sarasota', state: 'FL', googleRating: 4.8, reviewCount: 127, categories: 'Estate planning attorney, Trust attorney', googleMapsUrl: '', linkedinUrl: '', score: 82, autoMatched: ['specialty', 'reputation', 'speaking'], manualChecked: ['experience', 'noConflict', 'clientFit', 'proximity'], stage: 7, emailStatus: [true, true, true, true], vettingAnswers: ['15 years focused on estate planning and trusts', 'Yes, I speak at Florida Bar CLE events regularly', 'Clients are most confused about trust vs will and avoiding probate', 'I refer to trusted financial advisors — would love a direct partnership', 'No exclusive partnerships currently', 'Absolutely, quarterly works great with my schedule', 'No restrictions — educational events are encouraged'], vettingPassFail: [true, true, true, true, true, true, true], vettingDecision: 'approved', floridaBarVerified: true, agreementStatus: 'signed', partnerType: 'primary', notes: 'Excellent presenter. AAA members loved his last workshop.', callLog: [{ id: 'cl1', date: d(21), outcome: 'voicemail', note: 'Left message about partnership' }, { id: 'cl2', date: d(18), outcome: 'connected', note: 'Great call - very interested. Scheduling vetting call.' }, { id: 'cl3', date: d(12), outcome: 'connected', note: 'Vetting call done. Approved.' }], addedAt: d(30), lastUpdated: d(2) },
+
+        { id: 'demo-a2', firstName: 'Sandra', lastName: 'Chen', firmName: 'Chen & Associates Elder Law', email: 'schen@chenelderlaw.com', phone: '(941) 555-0287', website: 'https://chenelderlaw.com', address: '890 Tamiami Trail', city: 'Venice', state: 'FL', googleRating: 4.6, reviewCount: 89, categories: 'Elder law attorney, Estate planning attorney', googleMapsUrl: '', linkedinUrl: '', score: 75, autoMatched: ['specialty', 'reputation'], manualChecked: ['experience', 'noConflict', 'speaking', 'clientFit'], stage: 6, emailStatus: [true, true, true, true], vettingAnswers: ['12 years in elder law and estate planning', 'Several webinars during COVID, a few in-person since', 'Medicare planning and asset protection are hot topics', 'I work with insurance professionals regularly', 'No exclusive arrangements', 'Yes, quarterly or even monthly', 'None at all'], vettingPassFail: [true, true, true, true, true, true, true], vettingDecision: 'approved', floridaBarVerified: true, agreementStatus: 'signed', partnerType: 'backup', notes: 'Backup presenter. Available for Venice/Englewood events.', callLog: [{ id: 'cl4', date: d(25), outcome: 'connected', note: 'Intro call went well' }, { id: 'cl5', date: d(15), outcome: 'connected', note: 'Vetting complete. Approved as backup.' }], addedAt: d(28), lastUpdated: d(5) },
+
+        { id: 'demo-a3', firstName: 'Robert', lastName: 'Vasquez', firmName: 'Vasquez Legal PA', email: 'rvasquez@vasquezlegal.com', phone: '(813) 555-0391', website: 'https://vasquezlegal.com', address: '2200 Gulf Blvd', city: 'Tampa', state: 'FL', googleRating: 4.3, reviewCount: 54, categories: 'Estate planning attorney, Probate attorney', googleMapsUrl: '', linkedinUrl: '', score: 62, autoMatched: ['specialty', 'reputation'], manualChecked: ['experience', 'noConflict'], stage: 4, emailStatus: [true, true, true, false], vettingAnswers: ['8 years practicing', 'Not much public speaking yet', 'Probate avoidance is always a big topic', 'Open to working with advisors', 'No current partnerships', 'Quarterly would be fine', ''], vettingPassFail: [true, false, true, true, true, true, null], vettingDecision: 'needs_followup', floridaBarVerified: true, agreementStatus: 'not_sent', partnerType: 'none', notes: 'Needs more speaking experience. Follow up in 30 days.', callLog: [{ id: 'cl6', date: d(14), outcome: 'connected', note: 'Vetting call. Decent but lacks presentation experience.' }, { id: 'cl7', date: d(7), outcome: 'voicemail', note: 'Following up on Toastmasters suggestion' }], addedAt: d(22), lastUpdated: d(7) },
+
+        { id: 'demo-a4', firstName: 'Patricia', lastName: 'Williams', firmName: 'Williams Trust & Estate PLLC', email: 'pwilliams@williamstrusts.com', phone: '(941) 555-0518', website: 'https://williamstrusts.com', address: '456 Bee Ridge Rd', city: 'Sarasota', state: 'FL', googleRating: 4.9, reviewCount: 203, categories: 'Trust attorney, Wealth transfer, Estate planning', googleMapsUrl: '', linkedinUrl: '', score: 55, autoMatched: ['specialty', 'reputation', 'clientFit'], manualChecked: ['experience'], stage: 3, emailStatus: [true, true, true, false], vettingAnswers: ['20 years', '', '', '', '', '', ''], vettingPassFail: [true, null, null, null, null, null, null], vettingDecision: 'pending', floridaBarVerified: false, agreementStatus: 'not_sent', partnerType: 'none', notes: 'Very high rating. Scheduling vetting call.', callLog: [{ id: 'cl8', date: d(5), outcome: 'connected', note: 'Brief intro. She is interested. Scheduling full vetting call for next week.' }], addedAt: d(18), lastUpdated: d(5) },
+
+        { id: 'demo-a5', firstName: 'James', lastName: 'O\'Brien', firmName: 'O\'Brien Law Firm', email: '', phone: '(727) 555-0644', website: 'https://obrienestatelaw.com', address: '789 Central Ave', city: 'St. Petersburg', state: 'FL', googleRating: 4.1, reviewCount: 31, categories: 'Estate planning attorney', googleMapsUrl: '', linkedinUrl: '', score: 35, autoMatched: ['specialty', 'reputation'], manualChecked: [], stage: 2, emailStatus: [true, true, false, false], vettingAnswers: ['', '', '', '', '', '', ''], vettingPassFail: [null, null, null, null, null, null, null], vettingDecision: 'pending', floridaBarVerified: false, agreementStatus: 'not_sent', partnerType: 'none', notes: 'Responded to email. No email on file — reached via letter and phone.', callLog: [{ id: 'cl9', date: d(10), outcome: 'connected', note: 'Called after letter. Interested but busy this month.' }], addedAt: d(16), lastUpdated: d(3) },
+
+        { id: 'demo-a6', firstName: '', lastName: '', firmName: 'Clearwater Estate Planning Associates', email: 'info@clearwaterestate.com', phone: '(727) 555-0799', website: '', address: '321 Cleveland St', city: 'Clearwater', state: 'FL', googleRating: 3.8, reviewCount: 18, categories: 'Estate planning attorney, Wills and trusts', googleMapsUrl: '', linkedinUrl: '', score: 20, autoMatched: ['specialty'], manualChecked: [], stage: 1, emailStatus: [true, false, false, false], vettingAnswers: ['', '', '', '', '', '', ''], vettingPassFail: [null, null, null, null, null, null, null], vettingDecision: 'pending', floridaBarVerified: false, agreementStatus: 'not_sent', partnerType: 'none', notes: 'Letter sent. Below 4.0 rating — monitor.', callLog: [], addedAt: d(10), lastUpdated: d(10) },
+
+        { id: 'demo-a7', firstName: 'Diana', lastName: 'Morales', firmName: 'Morales & Kemp Attorneys', email: 'diana@moraleskemp.com', phone: '(941) 555-0855', website: 'https://moraleskemp.com', address: '100 S Washington Blvd', city: 'Sarasota', state: 'FL', googleRating: 4.5, reviewCount: 67, categories: 'Probate attorney, Elder law', googleMapsUrl: '', linkedinUrl: '', score: 35, autoMatched: ['specialty', 'reputation'], manualChecked: [], stage: 1, emailStatus: [true, false, false, false], vettingAnswers: ['', '', '', '', '', '', ''], vettingPassFail: [null, null, null, null, null, null, null], vettingDecision: 'pending', floridaBarVerified: false, agreementStatus: 'not_sent', partnerType: 'none', notes: '', callLog: [{ id: 'cl10', date: d(6), outcome: 'no_answer', note: 'No answer. Will try again.' }], addedAt: d(8), lastUpdated: d(6) },
+
+        { id: 'demo-a8', firstName: 'Kevin', lastName: 'Park', firmName: 'Park Legal Group LLC', email: 'kpark@parklegalgroup.com', phone: '(813) 555-0912', website: '', address: '555 W Kennedy Blvd', city: 'Tampa', state: 'FL', googleRating: 4.7, reviewCount: 92, categories: 'Estate planning, Asset protection, Business owner attorney', googleMapsUrl: '', linkedinUrl: '', score: 35, autoMatched: ['specialty', 'reputation', 'clientFit'], manualChecked: [], stage: 0, emailStatus: [false, false, false, false], vettingAnswers: ['', '', '', '', '', '', ''], vettingPassFail: [null, null, null, null, null, null, null], vettingDecision: 'pending', floridaBarVerified: false, agreementStatus: 'not_sent', partnerType: 'none', notes: 'New import. High rating. Looks promising.', callLog: [], addedAt: d(2), lastUpdated: d(2) },
+
+        { id: 'demo-a9', firstName: '', lastName: '', firmName: 'Bradenton Wills & Trust Center', email: '', phone: '(941) 555-1023', website: '', address: '801 Manatee Ave W', city: 'Bradenton', state: 'FL', googleRating: 4.0, reviewCount: 22, categories: 'Wills and trusts attorney', googleMapsUrl: '', linkedinUrl: '', score: 20, autoMatched: ['specialty', 'reputation'], manualChecked: [], stage: 0, emailStatus: [false, false, false, false], vettingAnswers: ['', '', '', '', '', '', ''], vettingPassFail: [null, null, null, null, null, null, null], vettingDecision: 'pending', floridaBarVerified: false, agreementStatus: 'not_sent', partnerType: 'none', notes: '', callLog: [], addedAt: d(1), lastUpdated: d(1) },
+
+        { id: 'demo-a10', firstName: 'Laura', lastName: 'Bennett', firmName: 'Bennett Elder Law PA', email: 'lbennett@bennettelderlaw.com', phone: '(941) 555-1134', website: 'https://bennettelderlaw.com', address: '1550 Ringling Blvd', city: 'Sarasota', state: 'FL', googleRating: 4.4, reviewCount: 45, categories: 'Elder law attorney, NAELA member', googleMapsUrl: '', linkedinUrl: '', score: 40, autoMatched: ['specialty', 'reputation', 'affiliations'], manualChecked: [], stage: 0, emailStatus: [false, false, false, false], vettingAnswers: ['', '', '', '', '', '', ''], vettingPassFail: [null, null, null, null, null, null, null], vettingDecision: 'pending', floridaBarVerified: false, agreementStatus: 'not_sent', partnerType: 'none', notes: 'NAELA member — good sign.', callLog: [], addedAt: d(1), lastUpdated: d(1) }
+      ];
+
+      const seminars = [
+        { id: 'demo-s1', title: 'Estate Planning 101: What Every Family Needs to Know', venue: 'Total Wine', venueNotes: '', date: dateStr(-45), attorneyId: 'demo-a1', complianceReviewed: true, promoChecklist: { aaaEmail: true, inBranchFlyers: true, newsletter: true, websiteListing: true, socialMedia: true, reminder2Weeks: true, reminder1Week: true, reminder1Day: true }, expectedAttendance: 35, actualAttendance: 38, consultationsBooked: 12, consultationsCompleted: 9, clientsConverted: 4, eventNotes: 'Great turnout. Michael was excellent. Several attendees stayed after to ask questions.', status: 'completed' },
+        { id: 'demo-s2', title: 'Avoiding Probate in Florida: What You Need to Know', venue: 'AAA', venueNotes: '', date: dateStr(-14), attorneyId: 'demo-a1', complianceReviewed: true, promoChecklist: { aaaEmail: true, inBranchFlyers: true, newsletter: true, websiteListing: true, socialMedia: true, reminder2Weeks: true, reminder1Week: true, reminder1Day: true }, expectedAttendance: 30, actualAttendance: 27, consultationsBooked: 8, consultationsCompleted: 5, clientsConverted: 2, eventNotes: 'Solid event. Probate topic resonated well with older AAA members.', status: 'completed' },
+        { id: 'demo-s3', title: 'Wills vs. Trusts: Which One Do You Actually Need?', venue: 'Total Wine', venueNotes: '', date: dateStr(18), attorneyId: 'demo-a1', complianceReviewed: true, promoChecklist: { aaaEmail: true, inBranchFlyers: true, newsletter: false, websiteListing: true, socialMedia: false, reminder2Weeks: false, reminder1Week: false, reminder1Day: false }, expectedAttendance: 40, actualAttendance: 0, consultationsBooked: 0, consultationsCompleted: 0, clientsConverted: 0, eventNotes: '', status: 'promoted' },
+        { id: 'demo-s4', title: 'Protecting Your Assets: Strategies Beyond a Simple Will', venue: 'AAA', venueNotes: '', date: dateStr(45), attorneyId: 'demo-a2', complianceReviewed: false, promoChecklist: { aaaEmail: false, inBranchFlyers: false, newsletter: false, websiteListing: false, socialMedia: false, reminder2Weeks: false, reminder1Week: false, reminder1Day: false }, expectedAttendance: 30, actualAttendance: 0, consultationsBooked: 0, consultationsCompleted: 0, clientsConverted: 0, eventNotes: '', status: 'planning' }
+      ];
+
+      const attendees = [
+        { id: 'demo-t1', firstName: 'Richard', lastName: 'Hayes', email: 'rhayes@gmail.com', phone: '(941) 555-2001', seminarId: 'demo-s1', notes: 'Very interested in IUL for retirement income. Has $800K in 401k.', productInterest: 'IUL', estimatedPremium: 24000, stage: 6, followUpDate: dateStr(-40), consultationDate: dateStr(-35), proposalDate: '', closedDate: dateStr(-20), policyNumber: 'POL-2026-0412', annualPremium: 24000, addedAt: d(44) },
+        { id: 'demo-t2', firstName: 'Margaret', lastName: 'Sullivan', email: 'msullivan@aol.com', phone: '(941) 555-2002', seminarId: 'demo-s1', notes: 'Retiring next year. Wants guaranteed income stream.', productInterest: 'Annuity', estimatedPremium: 150000, stage: 6, followUpDate: dateStr(-42), consultationDate: dateStr(-38), proposalDate: '', closedDate: dateStr(-25), policyNumber: 'POL-2026-0398', annualPremium: 150000, addedAt: d(44) },
+        { id: 'demo-t3', firstName: 'Thomas', lastName: 'Garcia', email: 'tgarcia@yahoo.com', phone: '(941) 555-2003', seminarId: 'demo-s1', notes: 'Business owner. Interested in both IUL and estate planning strategy.', productInterest: 'Both', estimatedPremium: 36000, stage: 5, followUpDate: dateStr(-40), consultationDate: dateStr(-30), proposalDate: '', closedDate: dateStr(-10), policyNumber: '', annualPremium: 36000, addedAt: d(44) },
+        { id: 'demo-t4', firstName: 'Carol', lastName: 'Anderson', email: 'canderson@gmail.com', phone: '(941) 555-2004', seminarId: 'demo-s1', notes: 'Consultation went well. Sending proposal for $18K annual IUL.', productInterest: 'IUL', estimatedPremium: 18000, stage: 4, followUpDate: dateStr(-41), consultationDate: dateStr(-28), proposalDate: '', closedDate: '', policyNumber: '', annualPremium: 0, addedAt: d(44) },
+        { id: 'demo-t5', firstName: 'David', lastName: 'Kim', email: 'dkim@outlook.com', phone: '(941) 555-2005', seminarId: 'demo-s2', notes: 'Just retired from teaching. Modest portfolio but interested.', productInterest: 'Annuity', estimatedPremium: 50000, stage: 3, followUpDate: dateStr(-10), consultationDate: dateStr(-5), proposalDate: '', closedDate: '', policyNumber: '', annualPremium: 0, addedAt: d(13) },
+        { id: 'demo-t6', firstName: 'Nancy', lastName: 'Roberts', email: 'nroberts@gmail.com', phone: '(941) 555-2006', seminarId: 'demo-s2', notes: '', productInterest: 'IUL', estimatedPremium: 12000, stage: 2, followUpDate: dateStr(-8), consultationDate: '', proposalDate: '', closedDate: '', policyNumber: '', annualPremium: 0, addedAt: d(13) },
+        { id: 'demo-t7', firstName: 'William', lastName: 'Foster', email: 'wfoster@comcast.net', phone: '(941) 555-2007', seminarId: 'demo-s2', notes: 'Scheduling follow-up. Seemed interested but wants to talk to wife first.', productInterest: 'Undecided', estimatedPremium: 0, stage: 1, followUpDate: dateStr(3), consultationDate: '', proposalDate: '', closedDate: '', policyNumber: '', annualPremium: 0, addedAt: d(13) },
+        { id: 'demo-t8', firstName: 'Barbara', lastName: 'Mitchell', email: '', phone: '(941) 555-2008', seminarId: 'demo-s2', notes: 'Attended but left early. May not be a fit.', productInterest: 'Undecided', estimatedPremium: 0, stage: 0, followUpDate: '', consultationDate: '', proposalDate: '', closedDate: '', policyNumber: '', annualPremium: 0, addedAt: d(13) }
+      ];
+
+      const programSetup = { aaaApproval: true, memberChannelAccess: true, aaaContactPerson: 'Jennifer Walsh', attorneyApprovalProcess: true, feedbackProcess: true };
+
+      return { attorneys, seminars, attendees, programSetup };
+    }
+
+    function StoreProvider({ children }) {
+      const hasData = loadStorage('crm_attorneys', []).length > 0;
+      const seed = !hasData ? generateDemoData() : null;
+      const [state, dispatch] = useReducer(storeReducer, {
+        attorneys: hasData ? loadStorage('crm_attorneys', []) : seed.attorneys,
+        seminars: hasData ? loadStorage('crm_seminars', []) : seed.seminars,
+        programSetup: hasData ? loadStorage('crm_programSetup', DEFAULT_SETUP) : seed.programSetup,
+        attendees: hasData ? loadStorage('crm_attendees', []) : seed.attendees
+      });
+
+      useEffect(() => { saveStorage('crm_attorneys', state.attorneys); }, [state.attorneys]);
+      useEffect(() => { saveStorage('crm_seminars', state.seminars); }, [state.seminars]);
+      useEffect(() => { saveStorage('crm_programSetup', state.programSetup); }, [state.programSetup]);
+      useEffect(() => { saveStorage('crm_attendees', state.attendees); }, [state.attendees]);
+
+      return <StoreContext.Provider value={{ state, dispatch }}>{children}</StoreContext.Provider>;
+    }
+
+    function useStore() { return useContext(StoreContext); }
+
+    // ========== UI COMPONENTS ==========
+    function Badge({ children, color = 'bg-gray-600' }) {
+      return <span className={`${color} text-white text-xs font-semibold px-2 py-0.5 rounded-full`}>{children}</span>;
+    }
+
+    function TierBadge({ score }) {
+      const t = getTier(score);
+      return <Badge color={t.color}>{t.label}</Badge>;
+    }
+
+    function PriorityBadge({ priority }) {
+      const colors = { REQUIRED: 'bg-red-500/20 text-red-400', PREFERRED: 'bg-blue-500/20 text-blue-400', BONUS: 'bg-amber-500/20 text-amber-400' };
+      return <span className={`${colors[priority]} text-xs font-semibold px-2 py-0.5 rounded`}>{priority}</span>;
+    }
+
+    function StageBadge({ stage }) {
+      const s = STAGES[stage];
+      if (!s) return null;
+      return <span className="text-xs font-medium px-2 py-0.5 rounded" style={{ background: s.color + '22', color: s.color }}>{s.name}</span>;
+    }
+
+    function StarRating({ rating }) {
+      const stars = [];
+      for (let i = 1; i <= 5; i++) {
+        stars.push(<span key={i} className={i <= Math.round(rating) ? 'text-amber-400' : 'text-gray-600'}>&#9733;</span>);
+      }
+      return <span className="text-sm">{stars} <span className="text-gray-400 ml-1">{rating.toFixed(1)}</span></span>;
+    }
+
+    function Modal({ open, onClose, title, children, wide }) {
+      if (!open) return null;
+      return (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60" onClick={onClose}>
+          <div className={`bg-dark-800 rounded-xl shadow-2xl border border-dark-600 max-h-[90vh] overflow-y-auto fade-in ${wide ? 'w-[900px] max-w-[95vw]' : 'w-[600px] max-w-[90vw]'}`} onClick={e => e.stopPropagation()}>
+            <div className="flex items-center justify-between p-5 border-b border-dark-600">
+              <h2 className="text-lg font-semibold">{title}</h2>
+              <button onClick={onClose} className="text-gray-400 hover:text-white text-xl">&times;</button>
+            </div>
+            <div className="p-5">{children}</div>
+          </div>
+        </div>
+      );
+    }
+
+    function Tabs({ tabs, active, onChange }) {
+      return (
+        <div className="flex gap-1 border-b border-dark-600 mb-4">
+          {tabs.map(t => (
+            <button key={t} onClick={() => onChange(t)}
+              className={`px-4 py-2 text-sm font-medium border-b-2 transition-colors ${active === t ? 'border-navy-500 text-white' : 'border-transparent text-gray-400 hover:text-gray-200'}`}>
+              {t}
+            </button>
+          ))}
+        </div>
+      );
+    }
+
+    // ========== SIMPLE BAR CHART ==========
+    function BarChart({ data, height = 200 }) {
+      const max = Math.max(...data.map(d => d.value), 1);
+      return (
+        <div className="flex items-end gap-2" style={{ height }}>
+          {data.map((d, i) => (
+            <div key={i} className="flex-1 flex flex-col items-center gap-1">
+              <span className="text-xs font-bold text-white">{d.value}</span>
+              <div className="w-full rounded-t-md transition-all" style={{ height: `${(d.value / max) * (height - 40)}px`, background: d.color || '#4f6ef7', minHeight: d.value > 0 ? 4 : 0 }} />
+              <span className="text-xs text-gray-400 text-center truncate w-full">{d.label}</span>
+            </div>
+          ))}
+        </div>
+      );
+    }
+
+    // ========== APIFY SEARCH MODAL ==========
+    function ApifySearchModal({ open, onClose }) {
+      const { dispatch } = useStore();
+      const [query, setQuery] = useState('estate planning attorney Tampa FL');
+      const [maxResults, setMaxResults] = useState(20);
+      const [status, setStatus] = useState('idle');
+      const [results, setResults] = useState([]);
+      const [error, setError] = useState('');
+      const [token, setToken] = useState(getApifyToken());
+      const [showToken, setShowToken] = useState(false);
+
+      function saveToken(t) { setToken(t); setApifyToken(t); }
+
+      async function handleSearch() {
+        setStatus('searching');
+        setError('');
+        try {
+          const attorneys = await runApifySearch(query, maxResults);
+          setResults(attorneys);
+          setStatus('preview');
+        } catch (e) {
+          setError(e.message);
+          setStatus('error');
+        }
+      }
+
+      function doImport() {
+        dispatch({ type: 'ADD_ATTORNEYS', payload: results });
+        setResults([]);
+        setStatus('idle');
+        onClose();
+      }
+
+      return (
+        <Modal open={open} onClose={() => { setStatus('idle'); setResults([]); onClose(); }} title="Download Attorneys from Google Maps" wide>
+          {status === 'idle' || status === 'error' ? (
+            <div className="space-y-4">
+              <p className="text-gray-400 text-sm">Search Google Maps to download attorneys. Results are auto-scored and imported.</p>
+              <div className="bg-dark-700 rounded-lg p-3">
+                <div className="flex items-center justify-between mb-1">
+                  <label className="text-xs text-gray-400">API Token</label>
+                  <button onClick={() => setShowToken(!showToken)} className="text-xs text-navy-400 hover:text-navy-300">{showToken ? 'Hide' : 'Configure'}</button>
+                </div>
+                {showToken ? (
+                  <input type="password" value={token} onChange={e => saveToken(e.target.value)} placeholder="Enter your API token" className="w-full px-3 py-2 rounded-lg border text-sm" />
+                ) : (
+                  <div className="text-xs text-gray-500">{token ? 'Token configured' : 'No token set — click Configure'}</div>
+                )}
+              </div>
+              <div>
+                <label className="text-xs text-gray-400 mb-1 block">Search Query</label>
+                <input value={query} onChange={e => setQuery(e.target.value)} placeholder="e.g., estate planning attorney Tampa FL"
+                  className="w-full px-3 py-2 rounded-lg border text-sm" />
+              </div>
+              <div>
+                <label className="text-xs text-gray-400 mb-1 block">Max Results</label>
+                <input type="number" value={maxResults} onChange={e => setMaxResults(parseInt(e.target.value) || 20)} min={1} max={100}
+                  className="w-32 px-3 py-2 rounded-lg border text-sm" />
+              </div>
+              {error && <div className="bg-red-500/10 border border-red-500/30 rounded-lg p-3 text-red-400 text-sm">{error}</div>}
+              <div className="flex items-center gap-3">
+                <button onClick={handleSearch} className="px-4 py-2 rounded-lg text-sm font-semibold bg-navy-600 hover:bg-navy-500 text-white">Download</button>
+                <span className="text-xs text-gray-500">Searches Google Maps for results</span>
+              </div>
+            </div>
+          ) : status === 'searching' ? (
+            <div className="text-center py-12">
+              <div className="inline-block w-8 h-8 border-2 border-navy-500 border-t-transparent rounded-full animate-spin mb-4" />
+              <p className="text-gray-400">Downloading attorneys from Google Maps...</p>
+              <p className="text-xs text-gray-500 mt-1">This may take 30-90 seconds depending on result count</p>
+            </div>
+          ) : status === 'preview' ? (
+            <div>
+              <p className="text-green-400 text-sm mb-3 font-medium">{results.length} attorneys found. Review and confirm import:</p>
+              <div className="max-h-64 overflow-y-auto border border-dark-600 rounded-lg mb-4">
+                <table className="w-full text-sm">
+                  <thead className="bg-dark-700 sticky top-0"><tr>
+                    <th className="text-left p-2 text-gray-400">Name</th>
+                    <th className="text-left p-2 text-gray-400">Firm</th>
+                    <th className="text-left p-2 text-gray-400">City</th>
+                    <th className="text-left p-2 text-gray-400">Rating</th>
+                    <th className="text-left p-2 text-gray-400">Score</th>
+                    <th className="text-left p-2 text-gray-400">Tier</th>
+                  </tr></thead>
+                  <tbody>
+                    {results.map(a => (
+                      <tr key={a.id} className="border-t border-dark-600">
+                        <td className="p-2">{a.firstName} {a.lastName}</td>
+                        <td className="p-2 text-gray-400">{a.firmName}</td>
+                        <td className="p-2 text-gray-400">{a.city}</td>
+                        <td className="p-2">{a.googleRating > 0 ? <StarRating rating={a.googleRating} /> : '—'}</td>
+                        <td className="p-2 font-semibold">{a.score}</td>
+                        <td className="p-2"><TierBadge score={a.score} /></td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+              <div className="flex gap-3 justify-end">
+                <button onClick={() => { setStatus('idle'); setResults([]); }} className="px-4 py-2 rounded-lg text-sm text-gray-400 hover:text-white border border-dark-600">Back</button>
+                <button onClick={doImport} className="px-4 py-2 rounded-lg text-sm font-semibold bg-navy-600 hover:bg-navy-500 text-white">Import {results.length} Attorneys</button>
+              </div>
+            </div>
+          ) : null}
+        </Modal>
+      );
+    }
+
+    // ========== CSV IMPORT MODAL ==========
+    function CsvImportModal({ open, onClose }) {
+      const { dispatch } = useStore();
+      const [preview, setPreview] = useState(null);
+      const fileRef = useRef();
+
+      function handleFile(e) {
+        const file = e.target.files[0];
+        if (!file) return;
+        const reader = new FileReader();
+        reader.onload = (ev) => {
+          const rows = parseCSV(ev.target.result);
+          if (!rows.length) { alert('No data found in CSV'); return; }
+          const headers = Object.keys(rows[0]);
+          const attorneys = rows.map(r => csvRowToAttorney(r, headers));
+          setPreview(attorneys);
+        };
+        reader.readAsText(file);
+      }
+
+      function doImport() {
+        if (!preview) return;
+        dispatch({ type: 'ADD_ATTORNEYS', payload: preview });
+        setPreview(null);
+        onClose();
+      }
+
+      return (
+        <Modal open={open} onClose={() => { setPreview(null); onClose(); }} title="Import Attorneys from CSV" wide>
+          {!preview ? (
+            <div>
+              <p className="text-gray-400 text-sm mb-4">Upload a CSV with attorney data.</p>
+              <input ref={fileRef} type="file" accept=".csv" onChange={handleFile}
+                className="block w-full text-sm text-gray-400 file:mr-4 file:py-2 file:px-4 file:rounded-lg file:border-0 file:text-sm file:font-semibold file:bg-navy-600 file:text-white hover:file:bg-navy-500 cursor-pointer" />
+            </div>
+          ) : (
+            <div>
+              <p className="text-green-400 text-sm mb-3 font-medium">{preview.length} attorneys parsed. Review and confirm import:</p>
+              <div className="max-h-64 overflow-y-auto border border-dark-600 rounded-lg mb-4">
+                <table className="w-full text-sm">
+                  <thead className="bg-dark-700 sticky top-0"><tr>
+                    <th className="text-left p-2 text-gray-400">Name</th>
+                    <th className="text-left p-2 text-gray-400">Firm</th>
+                    <th className="text-left p-2 text-gray-400">City</th>
+                    <th className="text-left p-2 text-gray-400">Rating</th>
+                    <th className="text-left p-2 text-gray-400">Score</th>
+                    <th className="text-left p-2 text-gray-400">Tier</th>
+                  </tr></thead>
+                  <tbody>
+                    {preview.map(a => (
+                      <tr key={a.id} className="border-t border-dark-600">
+                        <td className="p-2">{a.firstName} {a.lastName}</td>
+                        <td className="p-2 text-gray-400">{a.firmName}</td>
+                        <td className="p-2 text-gray-400">{a.city}</td>
+                        <td className="p-2">{a.googleRating > 0 ? <StarRating rating={a.googleRating} /> : '—'}</td>
+                        <td className="p-2 font-semibold">{a.score}</td>
+                        <td className="p-2"><TierBadge score={a.score} /></td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+              <div className="flex gap-3 justify-end">
+                <button onClick={() => setPreview(null)} className="px-4 py-2 rounded-lg text-sm text-gray-400 hover:text-white border border-dark-600">Cancel</button>
+                <button onClick={doImport} className="px-4 py-2 rounded-lg text-sm font-semibold bg-navy-600 hover:bg-navy-500 text-white">Import {preview.length} Attorneys</button>
+              </div>
+            </div>
+          )}
+        </Modal>
+      );
+    }
+
+    // ========== MANUAL ADD MODAL ==========
+    function ManualAddModal({ open, onClose }) {
+      const { dispatch } = useStore();
+      const [form, setForm] = useState({ firstName: '', lastName: '', firmName: '', email: '', phone: '', website: '', address: '', city: '', state: '', googleRating: '', reviewCount: '', categories: '', googleMapsUrl: '', linkedinUrl: '', notes: '' });
+      const set = (k, v) => setForm(p => ({ ...p, [k]: v }));
+
+      function handleAdd() {
+        const attorney = {
+          ...form, id: genId(),
+          googleRating: parseFloat(form.googleRating) || 0,
+          reviewCount: parseInt(form.reviewCount) || 0,
+          score: 0, autoMatched: [], manualChecked: [],
+          stage: 0, emailStatus: [false, false, false, false],
+          vettingAnswers: ['', '', '', '', '', '', ''],
+          vettingPassFail: [null, null, null, null, null, null, null],
+          vettingDecision: 'pending',
+          floridaBarVerified: false, agreementStatus: 'not_sent', partnerType: 'none',
+          addedAt: new Date().toISOString(), lastUpdated: new Date().toISOString()
+        };
+        attorney.autoMatched = autoDetectCriteria(attorney);
+        attorney.score = calcScore(attorney.autoMatched, attorney.manualChecked);
+        dispatch({ type: 'ADD_ATTORNEYS', payload: [attorney] });
+        setForm({ firstName: '', lastName: '', firmName: '', email: '', phone: '', website: '', address: '', city: '', state: '', googleRating: '', reviewCount: '', categories: '', googleMapsUrl: '', linkedinUrl: '', notes: '' });
+        onClose();
+      }
+
+      const Field = ({ label, field, type = 'text', span2 }) => (
+        <div className={span2 ? 'col-span-2' : ''}>
+          <label className="block text-xs text-gray-400 mb-1">{label}</label>
+          <input type={type} value={form[field]} onChange={e => set(field, e.target.value)} className="w-full px-3 py-2 rounded-lg border text-sm" />
+        </div>
+      );
+
+      return (
+        <Modal open={open} onClose={onClose} title="Add Attorney Manually">
+          <div className="grid grid-cols-2 gap-3">
+            <Field label="First Name" field="firstName" />
+            <Field label="Last Name" field="lastName" />
+            <Field label="Firm Name" field="firmName" span2 />
+            <Field label="Email" field="email" type="email" />
+            <Field label="Phone" field="phone" type="tel" />
+            <Field label="Website" field="website" />
+            <Field label="Google Rating" field="googleRating" type="number" />
+            <Field label="Address" field="address" span2 />
+            <Field label="City" field="city" />
+            <Field label="State" field="state" />
+            <Field label="Categories" field="categories" span2 />
+            <Field label="Google Maps URL" field="googleMapsUrl" span2 />
+            <Field label="LinkedIn URL" field="linkedinUrl" span2 />
+            <div className="col-span-2">
+              <label className="block text-xs text-gray-400 mb-1">Notes</label>
+              <textarea value={form.notes} onChange={e => set('notes', e.target.value)} rows={2} className="w-full px-3 py-2 rounded-lg border text-sm" />
+            </div>
+          </div>
+          <div className="flex justify-end mt-4">
+            <button onClick={handleAdd} className="px-4 py-2 rounded-lg text-sm font-semibold bg-navy-600 hover:bg-navy-500 text-white">Add Attorney</button>
+          </div>
+        </Modal>
+      );
+    }
+
+    // ========== ATTORNEY DETAIL ==========
+    function AttorneyDetail({ attorney, onClose }) {
+      const { state, dispatch } = useStore();
+      const [tab, setTab] = useState('Contact');
+      const a = state.attorneys.find(x => x.id === attorney.id) || attorney;
+
+      const update = (changes) => dispatch({ type: 'UPDATE_ATTORNEY', payload: { id: a.id, ...changes } });
+
+      const allChecked = new Set([...(a.autoMatched || []), ...(a.manualChecked || [])]);
+      const missingRequired = getMissingRequired(a);
+
+      function toggleCriteria(criteriaId) {
+        const manual = [...(a.manualChecked || [])];
+        const idx = manual.indexOf(criteriaId);
+        if (idx >= 0) manual.splice(idx, 1);
+        else manual.push(criteriaId);
+        const newScore = calcScore(a.autoMatched || [], manual);
+        update({ manualChecked: manual, score: newScore });
+      }
+
+      function setStage(newStage) {
+        if (newStage >= 5) {
+          const missing = getMissingRequired({ ...a });
+          if (missing.length > 0) {
+            alert(`Cannot approve: Missing required criteria:\n${missing.map(m => '- ' + m.label).join('\n')}`);
+            return;
+          }
+        }
+        update({ stage: newStage });
+      }
+
+      function setVettingDecision(decision) {
+        if (decision === 'approved') {
+          const missing = getMissingRequired(a);
+          if (missing.length > 0) {
+            alert(`Cannot approve: Missing required criteria:\n${missing.map(m => '- ' + m.label).join('\n')}`);
+            return;
+          }
+          update({ vettingDecision: decision, stage: 5 });
+        } else {
+          update({ vettingDecision: decision });
+        }
+      }
+
+      const linkedSeminars = state.seminars.filter(s => s.attorneyId === a.id);
+
+      return (
+        <Modal open={true} onClose={onClose} title={`${a.firstName} ${a.lastName}`.trim() || a.firmName} wide>
+          <div className="flex items-center gap-3 mb-4">
+            <TierBadge score={a.score} />
+            <StageBadge stage={a.stage} />
+            <span className="text-2xl font-bold text-white ml-auto">{a.score}<span className="text-sm text-gray-400 font-normal">/100</span></span>
+          </div>
+
+          <div className="flex items-center gap-2 mb-4">
+            <span className="text-xs text-gray-400">Stage:</span>
+            <select value={a.stage} onChange={e => setStage(parseInt(e.target.value))} className="text-sm rounded-lg border px-2 py-1">
+              {STAGES.map((s, i) => <option key={i} value={i}>{s.name}</option>)}
+            </select>
+          </div>
+
+          <Tabs tabs={['Contact', 'Scoring', 'Vetting', 'Partnership']} active={tab} onChange={setTab} />
+
+          {tab === 'Contact' && (
+            <div className="fade-in grid grid-cols-2 gap-4 text-sm">
+              <div>
+                <label className="text-xs text-gray-400">First Name</label>
+                <input value={a.firstName} onChange={e => update({ firstName: e.target.value })} className="w-full px-3 py-2 rounded-lg border mt-1" />
+              </div>
+              <div>
+                <label className="text-xs text-gray-400">Last Name</label>
+                <input value={a.lastName} onChange={e => update({ lastName: e.target.value })} className="w-full px-3 py-2 rounded-lg border mt-1" />
+              </div>
+              <div className="col-span-2">
+                <label className="text-xs text-gray-400">Firm</label>
+                <input value={a.firmName} onChange={e => update({ firmName: e.target.value })} className="w-full px-3 py-2 rounded-lg border mt-1" />
+              </div>
+              <div>
+                <label className="text-xs text-gray-400">Email</label>
+                <input value={a.email} onChange={e => update({ email: e.target.value })} className="w-full px-3 py-2 rounded-lg border mt-1" />
+              </div>
+              <div>
+                <label className="text-xs text-gray-400">Phone</label>
+                <input value={a.phone} onChange={e => update({ phone: e.target.value })} className="w-full px-3 py-2 rounded-lg border mt-1" />
+              </div>
+              <div className="col-span-2">
+                <label className="text-xs text-gray-400">Website</label>
+                <div className="flex gap-2 mt-1">
+                  <input value={a.website} onChange={e => update({ website: e.target.value })} className="flex-1 px-3 py-2 rounded-lg border" />
+                  {a.website && <a href={a.website.startsWith('http') ? a.website : 'https://' + a.website} target="_blank" className="text-navy-400 hover:text-navy-300 self-center text-xs">Open</a>}
+                </div>
+              </div>
+              <div className="col-span-2">
+                <label className="text-xs text-gray-400">Address</label>
+                <input value={a.address} onChange={e => update({ address: e.target.value })} className="w-full px-3 py-2 rounded-lg border mt-1" />
+              </div>
+              <div>
+                <label className="text-xs text-gray-400">City</label>
+                <input value={a.city} onChange={e => update({ city: e.target.value })} className="w-full px-3 py-2 rounded-lg border mt-1" />
+              </div>
+              <div>
+                <label className="text-xs text-gray-400">State</label>
+                <input value={a.state} onChange={e => update({ state: e.target.value })} className="w-full px-3 py-2 rounded-lg border mt-1" />
+              </div>
+              <div>
+                <label className="text-xs text-gray-400">Google Rating</label>
+                <div className="mt-1">{a.googleRating > 0 ? <StarRating rating={a.googleRating} /> : <span className="text-gray-500">No rating</span>}</div>
+              </div>
+              <div>
+                <label className="text-xs text-gray-400">Reviews</label>
+                <div className="mt-1 text-white">{a.reviewCount || 0}</div>
+              </div>
+              <div>
+                <label className="text-xs text-gray-400">Google Maps</label>
+                <div className="mt-1">{a.googleMapsUrl ? <a href={a.googleMapsUrl} target="_blank" className="text-navy-400 hover:text-navy-300 text-xs">Open in Maps</a> : <span className="text-gray-500">—</span>}</div>
+              </div>
+              <div>
+                <label className="text-xs text-gray-400">LinkedIn</label>
+                <input value={a.linkedinUrl || ''} onChange={e => update({ linkedinUrl: e.target.value })} placeholder="LinkedIn URL" className="w-full px-3 py-2 rounded-lg border mt-1" />
+              </div>
+              <div className="col-span-2 flex items-center gap-3 p-3 bg-dark-700 rounded-lg">
+                <input type="checkbox" checked={a.floridaBarVerified} onChange={e => update({ floridaBarVerified: e.target.checked })} className="rounded" />
+                <span className="text-sm">Florida Bar Verified</span>
+                <a href="https://www.floridabar.org/directories/find-mbr/" target="_blank" className="text-navy-400 hover:text-navy-300 text-xs ml-auto">Verify on FloridaBar.org</a>
+              </div>
+              <div className="col-span-2">
+                <label className="text-xs text-gray-400">Notes</label>
+                <textarea value={a.notes || ''} onChange={e => update({ notes: e.target.value })} rows={3} className="w-full px-3 py-2 rounded-lg border mt-1" />
+              </div>
+
+              {/* Call Log */}
+              <div className="col-span-2 border-t border-dark-600 pt-4 mt-2">
+                <div className="flex items-center justify-between mb-3">
+                  <h3 className="text-sm font-semibold">Call Log</h3>
+                  {(a.callLog || []).length > 0 && (
+                    <span className="text-xs text-gray-500">Last called: {new Date((a.callLog || [])[(a.callLog || []).length - 1].date).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric', hour: 'numeric', minute: '2-digit' })}</span>
+                  )}
+                </div>
+                {/* Log new call */}
+                {(() => {
+                  const [newLogOpen, setNewLogOpen] = useState(false);
+                  const [newOutcome, setNewOutcome] = useState('called');
+                  const [newNote, setNewNote] = useState('');
+                  function saveLog() {
+                    const entry = { id: genId(), date: new Date().toISOString(), outcome: newOutcome, note: newNote };
+                    update({ callLog: [...(a.callLog || []), entry] });
+                    setNewOutcome('called'); setNewNote(''); setNewLogOpen(false);
+                  }
+                  return (
+                    <div className="mb-3">
+                      {!newLogOpen ? (
+                        <button onClick={() => setNewLogOpen(true)} className="px-3 py-1.5 text-xs rounded-lg bg-navy-600/30 text-navy-400 hover:bg-navy-600/50 font-medium">&#9743; Log a Call</button>
+                      ) : (
+                        <div className="bg-dark-700 rounded-lg p-3 space-y-2 fade-in">
+                          <div className="grid grid-cols-2 gap-2">
+                            <div>
+                              <label className="text-xs text-gray-400 mb-1 block">Outcome</label>
+                              <select value={newOutcome} onChange={e => setNewOutcome(e.target.value)} className="w-full px-2 py-1.5 rounded border text-xs">
+                                <option value="called">Called</option>
+                                <option value="connected">Connected</option>
+                                <option value="voicemail">Left Voicemail</option>
+                                <option value="no_answer">No Answer</option>
+                                <option value="callback">Callback Scheduled</option>
+                              </select>
+                            </div>
+                            <div>
+                              <label className="text-xs text-gray-400 mb-1 block">Date</label>
+                              <div className="text-xs text-gray-300 px-2 py-1.5">{new Date().toLocaleString('en-US', { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' })}</div>
+                            </div>
+                          </div>
+                          <div>
+                            <label className="text-xs text-gray-400 mb-1 block">Notes</label>
+                            <textarea value={newNote} onChange={e => setNewNote(e.target.value)} rows={2} placeholder="What happened on the call..." className="w-full px-2 py-1.5 rounded border text-xs" />
+                          </div>
+                          <div className="flex gap-2">
+                            <button onClick={saveLog} className="text-xs px-3 py-1 rounded bg-navy-600 text-white hover:bg-navy-500 font-medium">Save Call</button>
+                            <button onClick={() => setNewLogOpen(false)} className="text-xs px-3 py-1 rounded text-gray-500 hover:text-white">Cancel</button>
+                          </div>
+                        </div>
+                      )}
+                    </div>
+                  );
+                })()}
+                {/* Call history */}
+                {(a.callLog || []).length > 0 ? (
+                  <div className="space-y-1.5 max-h-48 overflow-y-auto">
+                    {[...(a.callLog || [])].reverse().map(log => (
+                      <div key={log.id} className="bg-dark-700 rounded-lg p-2.5 text-xs">
+                        <div className="flex items-center justify-between mb-1">
+                          <span className={`font-medium ${log.outcome === 'connected' ? 'text-green-400' : log.outcome === 'voicemail' ? 'text-amber-400' : log.outcome === 'no_answer' ? 'text-red-400' : log.outcome === 'callback' ? 'text-purple-400' : 'text-gray-400'}`}>
+                            {log.outcome === 'connected' ? 'Connected' : log.outcome === 'voicemail' ? 'Left Voicemail' : log.outcome === 'no_answer' ? 'No Answer' : log.outcome === 'callback' ? 'Callback Scheduled' : 'Called'}
+                          </span>
+                          <span className="text-gray-500">{new Date(log.date).toLocaleDateString('en-US', { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' })}</span>
+                        </div>
+                        {log.note && <div className="text-gray-400">{log.note}</div>}
+                      </div>
+                    ))}
+                  </div>
+                ) : (
+                  <div className="text-xs text-gray-600">No calls logged yet</div>
+                )}
+              </div>
+
+              <div className="col-span-2 border-t border-dark-600 pt-4 mt-2">
+                <h3 className="text-sm font-semibold mb-3">Email Sequence</h3>
+                <div className="space-y-3">
+                  {EMAIL_SEQUENCE.map((em, i) => {
+                    const [expanded, setExpanded] = useState(false);
+                    const [copied, setCopied] = useState('');
+                    const emailBody = em.body(a);
+                    const copyText = (text, label) => {
+                      navigator.clipboard.writeText(text).then(() => { setCopied(label); setTimeout(() => setCopied(''), 2000); });
+                    };
+                    return (
+                      <div key={i} className="bg-dark-700 rounded-lg overflow-hidden">
+                        <div className="flex items-center gap-3 p-3">
+                          <input type="checkbox" checked={a.emailStatus[i]} onChange={e => {
+                            const es = [...a.emailStatus]; es[i] = e.target.checked;
+                            const changes = { emailStatus: es };
+                            if (i === 0 && e.target.checked && a.stage === 0) changes.stage = 1;
+                            update(changes);
+                          }} />
+                          <div className="flex-1 cursor-pointer" onClick={() => setExpanded(!expanded)}>
+                            <div className="text-sm font-medium">{em.name} <span className="text-gray-500 text-xs ml-2">{em.day}</span></div>
+                            <div className="text-xs text-gray-400">{em.subject}</div>
+                          </div>
+                          {a.emailStatus[i] && <span className="text-green-400 text-xs font-medium">Sent</span>}
+                          <button onClick={() => setExpanded(!expanded)} className="text-xs text-gray-500 hover:text-white px-1">{expanded ? '▲' : '▼'}</button>
+                        </div>
+                        {expanded && (
+                          <div className="border-t border-dark-600 p-3 fade-in">
+                            <div className="flex gap-2 mb-2">
+                              <button onClick={() => copyText(em.subject, 'subject')}
+                                className={`px-2 py-1 text-xs rounded font-medium ${copied === 'subject' ? 'bg-green-500/20 text-green-400' : 'bg-dark-600 text-gray-400 hover:text-white'}`}>
+                                {copied === 'subject' ? 'Subject Copied!' : 'Copy Subject'}
+                              </button>
+                              <button onClick={() => copyText(emailBody, 'body')}
+                                className={`px-2 py-1 text-xs rounded font-medium ${copied === 'body' ? 'bg-green-500/20 text-green-400' : 'bg-dark-600 text-gray-400 hover:text-white'}`}>
+                                {copied === 'body' ? 'Body Copied!' : 'Copy Body'}
+                              </button>
+                              <button onClick={() => copyText(`Subject: ${em.subject}\n\n${emailBody}`, 'all')}
+                                className={`px-2 py-1 text-xs rounded font-medium ${copied === 'all' ? 'bg-green-500/20 text-green-400' : 'bg-navy-600/40 text-navy-400 hover:text-white'}`}>
+                                {copied === 'all' ? 'All Copied!' : 'Copy All'}
+                              </button>
+                              {a.email && <a href={`https://outlook.office.com/mail/deeplink/compose?to=${encodeURIComponent(a.email)}&subject=${encodeURIComponent(em.subject)}&body=${encodeURIComponent(emailBody)}`} target="_blank"
+                                className="px-2 py-1 text-xs rounded font-medium bg-amber-600/30 text-amber-400 hover:text-white ml-auto">Open in Outlook</a>}
+                            </div>
+                            <div className="bg-dark-800 rounded-lg p-3 text-sm text-gray-300 whitespace-pre-wrap leading-relaxed max-h-64 overflow-y-auto">{emailBody}</div>
+                          </div>
+                        )}
+                      </div>
+                    );
+                  })}
+                </div>
+                <div className="mt-2 h-1.5 bg-dark-700 rounded-full overflow-hidden">
+                  <div className="h-full bg-navy-500 rounded-full transition-all" style={{ width: `${(a.emailStatus.filter(Boolean).length / 4) * 100}%` }} />
+                </div>
+              </div>
+            </div>
+          )}
+
+          {tab === 'Scoring' && (
+            <div className="fade-in">
+              {missingRequired.length > 0 && (
+                <div className="bg-red-500/10 border border-red-500/30 rounded-lg p-3 mb-4">
+                  <p className="text-red-400 text-sm font-semibold">{missingRequired.length} Required criteria not met — cannot approve until resolved:</p>
+                  <ul className="mt-1 text-sm text-red-300">{missingRequired.map(m => <li key={m.id}>- {m.label}</li>)}</ul>
+                </div>
+              )}
+              <div className="space-y-2">
+                {SCORING_CRITERIA.map(c => {
+                  const isAuto = (a.autoMatched || []).includes(c.id);
+                  const isManual = (a.manualChecked || []).includes(c.id);
+                  const checked = isAuto || isManual;
+                  return (
+                    <div key={c.id} className={`flex items-center gap-3 p-3 rounded-lg ${checked ? 'bg-dark-700' : 'bg-dark-800 border border-dark-600'}`}>
+                      <input type="checkbox" checked={checked} onChange={() => toggleCriteria(c.id)} className="rounded" />
+                      <div className="flex-1">
+                        <div className="text-sm">{c.label}</div>
+                        <div className="flex items-center gap-2 mt-1">
+                          <PriorityBadge priority={c.priority} />
+                          <span className="text-xs text-gray-500">+{c.weight} pts</span>
+                          {isAuto && <span className="text-xs bg-green-500/20 text-green-400 px-1.5 py-0.5 rounded">AUTO</span>}
+                        </div>
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+          )}
+
+          {tab === 'Vetting' && (
+            <div className="fade-in space-y-4">
+              {VETTING_QUESTIONS.map((q, i) => (
+                <div key={i} className="bg-dark-700 rounded-lg p-3">
+                  <div className="text-sm font-medium mb-2">{i + 1}. {q}</div>
+                  <textarea value={a.vettingAnswers[i] || ''} onChange={e => {
+                    const va = [...a.vettingAnswers]; va[i] = e.target.value;
+                    update({ vettingAnswers: va });
+                  }} rows={2} placeholder="Enter answer..." className="w-full px-3 py-2 rounded-lg border text-sm mb-2" />
+                  <div className="flex gap-2">
+                    <button onClick={() => { const pf = [...a.vettingPassFail]; pf[i] = true; update({ vettingPassFail: pf }); }}
+                      className={`px-3 py-1 text-xs rounded-lg font-medium ${a.vettingPassFail[i] === true ? 'bg-green-500 text-white' : 'bg-dark-600 text-gray-400 hover:bg-green-500/20'}`}>Pass</button>
+                    <button onClick={() => { const pf = [...a.vettingPassFail]; pf[i] = false; update({ vettingPassFail: pf }); }}
+                      className={`px-3 py-1 text-xs rounded-lg font-medium ${a.vettingPassFail[i] === false ? 'bg-red-500 text-white' : 'bg-dark-600 text-gray-400 hover:bg-red-500/20'}`}>Fail</button>
+                    <button onClick={() => { const pf = [...a.vettingPassFail]; pf[i] = null; update({ vettingPassFail: pf }); }}
+                      className="px-3 py-1 text-xs rounded-lg text-gray-500 hover:text-gray-300">Clear</button>
+                  </div>
+                </div>
+              ))}
+              <div className="border-t border-dark-600 pt-4">
+                <h3 className="text-sm font-semibold mb-3">Overall Vetting Decision</h3>
+                <div className="flex gap-3">
+                  {['pending', 'approved', 'not_approved', 'needs_followup'].map(d => (
+                    <button key={d} onClick={() => setVettingDecision(d)}
+                      className={`px-4 py-2 text-sm rounded-lg font-medium capitalize ${a.vettingDecision === d
+                        ? d === 'approved' ? 'bg-green-500 text-white' : d === 'not_approved' ? 'bg-red-500 text-white' : d === 'needs_followup' ? 'bg-amber-500 text-white' : 'bg-gray-500 text-white'
+                        : 'bg-dark-600 text-gray-400 hover:text-white'}`}>
+                      {d.replace(/_/g, ' ')}
+                    </button>
+                  ))}
+                </div>
+              </div>
+            </div>
+          )}
+
+          {tab === 'Partnership' && (
+            <div className="fade-in space-y-4">
+              <div className="flex items-center gap-3 p-3 bg-dark-700 rounded-lg">
+                <input type="checkbox" checked={a.floridaBarVerified} onChange={e => update({ floridaBarVerified: e.target.checked })} />
+                <span className="text-sm">Florida Bar Verified</span>
+                <a href="https://www.floridabar.org/directories/find-mbr/" target="_blank" className="text-navy-400 hover:text-navy-300 text-xs ml-auto">Verify</a>
+              </div>
+              <div>
+                <label className="text-xs text-gray-400 mb-1 block">Partnership Agreement</label>
+                <select value={a.agreementStatus} onChange={e => update({ agreementStatus: e.target.value })} className="w-full px-3 py-2 rounded-lg border text-sm">
+                  <option value="not_sent">Not Sent</option>
+                  <option value="sent">Sent</option>
+                  <option value="signed">Signed</option>
+                </select>
+              </div>
+              <div>
+                <label className="text-xs text-gray-400 mb-1 block">Partner Type</label>
+                <select value={a.partnerType} onChange={e => update({ partnerType: e.target.value })} className="w-full px-3 py-2 rounded-lg border text-sm">
+                  <option value="none">None</option>
+                  <option value="primary">Primary</option>
+                  <option value="backup">Backup</option>
+                </select>
+              </div>
+              {linkedSeminars.length > 0 && (
+                <div>
+                  <label className="text-xs text-gray-400 mb-2 block">Assigned Seminars</label>
+                  {linkedSeminars.map(s => (
+                    <div key={s.id} className="p-2 bg-dark-700 rounded-lg mb-1 text-sm">
+                      <span className="font-medium">{s.title}</span> — <span className="text-gray-400">{s.date}</span>
+                      <span className={`ml-2 text-xs px-1.5 py-0.5 rounded ${s.status === 'completed' ? 'bg-green-500/20 text-green-400' : s.status === 'cancelled' ? 'bg-red-500/20 text-red-400' : 'bg-blue-500/20 text-blue-400'}`}>{s.status}</span>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+          )}
+        </Modal>
+      );
+    }
+
+    // ========== DASHBOARD ==========
+    function Dashboard() {
+      const { state, dispatch } = useStore();
+      const { attorneys, seminars, programSetup, attendees } = state;
+      const [setupOpen, setSetupOpen] = useState(false);
+
+      const tiers = { HOT: attorneys.filter(a => a.score >= 70).length, WARM: attorneys.filter(a => a.score >= 40 && a.score < 70).length, COLD: attorneys.filter(a => a.score < 40).length };
+      const stageCounts = STAGES.map((_, i) => attorneys.filter(a => a.stage === i).length);
+      const completed = seminars.filter(s => s.status === 'completed');
+      const upcoming = seminars.filter(s => s.status === 'planning' || s.status === 'promoted').sort((a, b) => a.date > b.date ? 1 : -1).slice(0, 3);
+      const totalAttendees = completed.reduce((s, e) => s + (e.actualAttendance || 0), 0);
+      const totalConsultations = completed.reduce((s, e) => s + (e.consultationsBooked || 0), 0);
+      const totalConverted = completed.reduce((s, e) => s + (e.clientsConverted || 0), 0);
+      const clientsWon = attendees.filter(a => a.stage >= 5).length;
+      const policyActive = attendees.filter(a => a.stage >= 6).length;
+
+      const updateSetup = (k, v) => dispatch({ type: 'UPDATE_SETUP', payload: { [k]: v } });
+
+      return (
+        <div className="fade-in space-y-6">
+          <h1 className="text-2xl font-bold">Dashboard</h1>
+
+          <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+            <div className="bg-dark-800 rounded-xl p-4 border border-dark-600">
+              <div className="text-3xl font-bold">{attorneys.length}</div>
+              <div className="text-sm text-gray-400">Total Attorneys</div>
+            </div>
+            <div className="bg-dark-800 rounded-xl p-4 border border-dark-600">
+              <div className="text-3xl font-bold">{completed.length}</div>
+              <div className="text-sm text-gray-400">Seminars Completed</div>
+            </div>
+            <div className="bg-dark-800 rounded-xl p-4 border border-dark-600">
+              <div className="text-3xl font-bold">{totalAttendees}</div>
+              <div className="text-sm text-gray-400">Total Attendees</div>
+            </div>
+            <div className="bg-dark-800 rounded-xl p-4 border border-dark-600">
+              <div className="text-3xl font-bold text-green-400">{clientsWon}</div>
+              <div className="text-sm text-gray-400">Clients Won</div>
+            </div>
+          </div>
+
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+            <div className="bg-dark-800 rounded-xl p-4 border border-dark-600">
+              <h3 className="text-sm font-semibold text-gray-400 mb-3">Tier Breakdown</h3>
+              <div className="flex items-center gap-4">
+                <div className="flex items-center gap-2"><Badge color="bg-red-500">HOT</Badge><span className="text-xl font-bold">{tiers.HOT}</span></div>
+                <div className="flex items-center gap-2"><Badge color="bg-amber-500">WARM</Badge><span className="text-xl font-bold">{tiers.WARM}</span></div>
+                <div className="flex items-center gap-2"><Badge color="bg-gray-500">COLD</Badge><span className="text-xl font-bold">{tiers.COLD}</span></div>
+              </div>
+            </div>
+            <div className="bg-dark-800 rounded-xl p-4 border border-dark-600">
+              <h3 className="text-sm font-semibold text-gray-400 mb-3">Consultations Booked</h3>
+              <div className="text-3xl font-bold">{totalConsultations}</div>
+            </div>
+            <div className="bg-dark-800 rounded-xl p-4 border border-dark-600">
+              <h3 className="text-sm font-semibold text-gray-400 mb-3">Active Policies</h3>
+              <div className="text-3xl font-bold text-emerald-400">{policyActive}</div>
+            </div>
+          </div>
+
+          <div className="bg-dark-800 rounded-xl p-4 border border-dark-600">
+            <h3 className="text-sm font-semibold text-gray-400 mb-3">Pipeline Overview</h3>
+            <div className="flex gap-1">
+              {STAGES.map((s, i) => (
+                <div key={i} className="flex-1 text-center">
+                  <div className="text-lg font-bold" style={{ color: s.color }}>{stageCounts[i]}</div>
+                  <div className="text-xs text-gray-500 truncate">{s.name}</div>
+                  <div className="h-1.5 rounded-full mt-1" style={{ background: s.color + '33' }}>
+                    <div className="h-full rounded-full" style={{ background: s.color, width: attorneys.length ? `${(stageCounts[i] / attorneys.length) * 100}%` : '0%' }} />
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+
+          {upcoming.length > 0 && (
+            <div className="bg-dark-800 rounded-xl p-4 border border-dark-600">
+              <h3 className="text-sm font-semibold text-gray-400 mb-3">Upcoming Seminars</h3>
+              <div className="space-y-2">
+                {upcoming.map(s => {
+                  const atty = attorneys.find(a => a.id === s.attorneyId);
+                  return (
+                    <div key={s.id} className="flex items-center gap-3 p-2 bg-dark-700 rounded-lg">
+                      <div className="text-sm font-medium flex-1">{s.title}</div>
+                      <div className="text-xs text-gray-400">{s.date}</div>
+                      <div className="text-xs text-gray-400">{s.venue}</div>
+                      {atty && <div className="text-xs text-navy-400">{atty.firstName} {atty.lastName}</div>}
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+          )}
+
+          <div className="bg-dark-800 rounded-xl border border-dark-600">
+            <button onClick={() => setSetupOpen(!setupOpen)} className="w-full flex items-center justify-between p-4 text-left">
+              <h3 className="text-sm font-semibold text-gray-400">AAA Program Setup Checklist</h3>
+              <span className="text-gray-500 text-xs">{setupOpen ? '▲' : '▼'}</span>
+            </button>
+            {setupOpen && (
+              <div className="px-4 pb-4 space-y-2 border-t border-dark-600 pt-3">
+                <label className="flex items-center gap-3 text-sm"><input type="checkbox" checked={programSetup.aaaApproval} onChange={e => updateSetup('aaaApproval', e.target.checked)} /> Approval to host workshops at AAA locations</label>
+                <label className="flex items-center gap-3 text-sm"><input type="checkbox" checked={programSetup.memberChannelAccess} onChange={e => updateSetup('memberChannelAccess', e.target.checked)} /> Access to member communication channels</label>
+                <div className="flex items-center gap-3 text-sm">
+                  <span className="text-gray-400 min-w-fit">AAA Contact:</span>
+                  <input value={programSetup.aaaContactPerson} onChange={e => updateSetup('aaaContactPerson', e.target.value)} className="flex-1 px-2 py-1 rounded border text-sm" placeholder="Contact name" />
+                </div>
+                <label className="flex items-center gap-3 text-sm"><input type="checkbox" checked={programSetup.attorneyApprovalProcess} onChange={e => updateSetup('attorneyApprovalProcess', e.target.checked)} /> AAA retains final say on attorney presenters</label>
+                <label className="flex items-center gap-3 text-sm"><input type="checkbox" checked={programSetup.feedbackProcess} onChange={e => updateSetup('feedbackProcess', e.target.checked)} /> Post-event feedback process agreed</label>
+              </div>
+            )}
+          </div>
+        </div>
+      );
+    }
+
+    // ========== ATTORNEY LIST ==========
+    function AttorneyList() {
+      const { state } = useStore();
+      const [search, setSearch] = useState('');
+      const [tierFilter, setTierFilter] = useState('All');
+      const [stageFilter, setStageFilter] = useState('All');
+      const [vettingFilter, setVettingFilter] = useState('All');
+      const [selectedId, setSelectedId] = useState(null);
+      const [showImport, setShowImport] = useState(false);
+      const [showManual, setShowManual] = useState(false);
+      const [showApify, setShowApify] = useState(false);
+
+      const filtered = useMemo(() => {
+        let list = state.attorneys;
+        if (search) {
+          const s = search.toLowerCase();
+          list = list.filter(a => [a.firstName, a.lastName, a.firmName, a.city].some(f => (f || '').toLowerCase().includes(s)));
+        }
+        if (tierFilter !== 'All') list = list.filter(a => getTier(a.score).label === tierFilter);
+        if (stageFilter !== 'All') list = list.filter(a => a.stage === parseInt(stageFilter));
+        if (vettingFilter !== 'All') list = list.filter(a => a.vettingDecision === vettingFilter);
+        return [...list].sort((a, b) => b.score - a.score);
+      }, [state.attorneys, search, tierFilter, stageFilter, vettingFilter]);
+
+      const selected = selectedId ? state.attorneys.find(a => a.id === selectedId) : null;
+
+      return (
+        <div className="fade-in">
+          <div className="flex items-center justify-between mb-4">
+            <h1 className="text-2xl font-bold">Attorneys</h1>
+            <div className="flex gap-2">
+              <button onClick={() => setShowManual(true)} className="px-3 py-2 rounded-lg text-sm bg-dark-700 border border-dark-600 hover:border-navy-500 text-gray-300">+ Add</button>
+              <button onClick={() => setShowImport(true)} className="px-3 py-2 rounded-lg text-sm bg-dark-700 border border-dark-600 hover:border-navy-500 text-gray-300">Import CSV</button>
+              <button onClick={() => setShowApify(true)} className="px-3 py-2 rounded-lg text-sm bg-navy-600 hover:bg-navy-500 text-white font-medium">Download</button>
+            </div>
+          </div>
+
+          <div className="flex flex-wrap gap-3 mb-4">
+            <input value={search} onChange={e => setSearch(e.target.value)} placeholder="Search name, firm, city..." className="px-3 py-2 rounded-lg border text-sm w-64" />
+            <select value={tierFilter} onChange={e => setTierFilter(e.target.value)} className="px-3 py-2 rounded-lg border text-sm">
+              <option value="All">All Tiers</option>
+              <option value="HOT">Hot</option>
+              <option value="WARM">Warm</option>
+              <option value="COLD">Cold</option>
+            </select>
+            <select value={stageFilter} onChange={e => setStageFilter(e.target.value)} className="px-3 py-2 rounded-lg border text-sm">
+              <option value="All">All Stages</option>
+              {STAGES.map((s, i) => <option key={i} value={i}>{s.name}</option>)}
+            </select>
+            <select value={vettingFilter} onChange={e => setVettingFilter(e.target.value)} className="px-3 py-2 rounded-lg border text-sm">
+              <option value="All">All Vetting</option>
+              <option value="pending">Pending</option>
+              <option value="approved">Approved</option>
+              <option value="not_approved">Not Approved</option>
+              <option value="needs_followup">Needs Follow-up</option>
+            </select>
+            <button onClick={() => exportCSV(filtered)} className="ml-auto px-3 py-2 rounded-lg text-sm bg-dark-700 border border-dark-600 hover:border-dark-500 text-gray-400">Export CSV</button>
+          </div>
+
+          <div className="bg-dark-800 rounded-xl border border-dark-600 overflow-hidden">
+            <table className="w-full text-sm">
+              <thead className="bg-dark-700"><tr>
+                <th className="text-left p-3 text-gray-400 font-medium">Name</th>
+                <th className="text-left p-3 text-gray-400 font-medium">Firm</th>
+                <th className="text-left p-3 text-gray-400 font-medium">City</th>
+                <th className="text-left p-3 text-gray-400 font-medium">Rating</th>
+                <th className="text-left p-3 text-gray-400 font-medium">Score</th>
+                <th className="text-left p-3 text-gray-400 font-medium">Tier</th>
+                <th className="text-left p-3 text-gray-400 font-medium">Stage</th>
+                <th className="text-left p-3 text-gray-400 font-medium">Vetting</th>
+              </tr></thead>
+              <tbody>
+                {filtered.length === 0 ? (
+                  <tr><td colSpan={8} className="p-8 text-center text-gray-500">No attorneys found. Import a CSV, add manually, or download from Google Maps.</td></tr>
+                ) : filtered.map(a => (
+                  <tr key={a.id} onClick={() => setSelectedId(a.id)} className="border-t border-dark-600 hover:bg-dark-700 cursor-pointer transition-colors">
+                    <td className="p-3 font-medium">{a.firstName} {a.lastName}</td>
+                    <td className="p-3 text-gray-400">{a.firmName}</td>
+                    <td className="p-3 text-gray-400">{a.city}{a.state ? `, ${a.state}` : ''}</td>
+                    <td className="p-3">{a.googleRating > 0 ? <StarRating rating={a.googleRating} /> : '—'}</td>
+                    <td className="p-3 font-bold">{a.score}</td>
+                    <td className="p-3"><TierBadge score={a.score} /></td>
+                    <td className="p-3"><StageBadge stage={a.stage} /></td>
+                    <td className="p-3"><span className={`text-xs capitalize ${a.vettingDecision === 'approved' ? 'text-green-400' : a.vettingDecision === 'not_approved' ? 'text-red-400' : 'text-gray-400'}`}>{a.vettingDecision.replace(/_/g, ' ')}</span></td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+          <div className="text-xs text-gray-500 mt-2">{filtered.length} of {state.attorneys.length} attorneys</div>
+
+          {selected && <AttorneyDetail attorney={selected} onClose={() => setSelectedId(null)} />}
+          <CsvImportModal open={showImport} onClose={() => setShowImport(false)} />
+          <ManualAddModal open={showManual} onClose={() => setShowManual(false)} />
+          <ApifySearchModal open={showApify} onClose={() => setShowApify(false)} />
+        </div>
+      );
+    }
+
+    // ========== PIPELINE BOARD ==========
+    function PipelineBoard() {
+      const { state, dispatch } = useStore();
+      const [selectedId, setSelectedId] = useState(null);
+
+      function moveToStage(attorney, newStage) {
+        if (newStage >= 5) {
+          const missing = getMissingRequired(attorney);
+          if (missing.length > 0) {
+            alert(`Cannot move to ${STAGES[newStage].name}: Missing required criteria:\n${missing.map(m => '- ' + m.label).join('\n')}`);
+            return;
+          }
+        }
+        dispatch({ type: 'UPDATE_ATTORNEY', payload: { id: attorney.id, stage: newStage } });
+      }
+
+      const selected = selectedId ? state.attorneys.find(a => a.id === selectedId) : null;
+
+      return (
+        <div className="fade-in">
+          <h1 className="text-2xl font-bold mb-4">Pipeline</h1>
+          <div className="flex gap-3 overflow-x-auto pb-4" style={{ height: 'calc(100vh - 140px)' }}>
+            {STAGES.map((stage, idx) => {
+              const cards = state.attorneys.filter(a => a.stage === idx);
+              return (
+                <div key={idx} className="min-w-[220px] flex-shrink-0 flex flex-col" style={{ height: '100%' }}>
+                  <div className="flex items-center gap-2 mb-2 px-1 sticky top-0 z-10 py-2" style={{ background: '#1a1a2e' }}>
+                    <div className="w-2.5 h-2.5 rounded-full" style={{ background: stage.color }} />
+                    <span className="text-sm font-semibold">{stage.name}</span>
+                    <span className="text-xs text-gray-500 ml-auto bg-dark-700 px-1.5 py-0.5 rounded-full">{cards.length}</span>
+                  </div>
+                  <div className="space-y-2 flex-1 overflow-y-auto bg-dark-800/50 rounded-xl p-2 border border-dark-600/50">
+                    {cards.map(a => {
+                      const tierColor = a.score >= 70 ? '#ef4444' : a.score >= 40 ? '#f59e0b' : '#6b7280';
+                      const daysAgo = a.lastUpdated ? Math.floor((Date.now() - new Date(a.lastUpdated).getTime()) / 86400000) : null;
+                      const callLog = a.callLog || [];
+                      const lastCall = callLog.length > 0 ? callLog[callLog.length - 1] : null;
+                      const [logOpen, setLogOpen] = useState(false);
+                      const [logNote, setLogNote] = useState('');
+                      const [logOutcome, setLogOutcome] = useState('called');
+
+                      function submitLog(e) {
+                        e.stopPropagation();
+                        const newLog = { id: genId(), date: new Date().toISOString(), outcome: logOutcome, note: logNote };
+                        dispatch({ type: 'UPDATE_ATTORNEY', payload: { id: a.id, callLog: [...callLog, newLog] } });
+                        setLogNote(''); setLogOutcome('called'); setLogOpen(false);
+                      }
+
+                      return (
+                        <div key={a.id} onClick={() => setSelectedId(a.id)}
+                          className="bg-dark-800 rounded-lg border border-dark-600 hover:border-dark-500 cursor-pointer transition-colors overflow-hidden flex">
+                          <div className="w-1 flex-shrink-0 rounded-l-lg" style={{ background: tierColor }} />
+                          <div className="p-2.5 flex-1 min-w-0">
+                            <div className="flex items-center justify-between mb-1">
+                              <div className="text-sm font-medium truncate">{(a.firstName || a.lastName) ? `${a.firstName} ${a.lastName}`.trim() : a.firmName}</div>
+                              <span className="text-xs font-bold ml-2 flex-shrink-0">{a.score}</span>
+                            </div>
+                            <div className="flex items-center gap-2 mb-1.5 text-xs">
+                              {a.phone && <a href={`tel:${a.phone}`} onClick={e => e.stopPropagation()} className="text-navy-400 hover:text-navy-300 truncate">{a.phone}</a>}
+                              {a.phone && a.email && <span className="text-gray-600">|</span>}
+                              {a.email && <a href={`https://outlook.office.com/mail/deeplink/compose?to=${encodeURIComponent(a.email)}`} target="_blank" onClick={e => e.stopPropagation()} className="text-navy-400 hover:text-navy-300 truncate">{a.email}</a>}
+                            </div>
+                            <div className="flex items-center justify-between">
+                              <div className="flex items-center gap-1" title="Outreach: L / 1 / 2 / 3">
+                                {['L', '1', '2', '3'].map((label, ei) => (
+                                  <span key={ei} className={`text-xs font-medium px-1 rounded ${a.emailStatus[ei] ? 'bg-green-500/25 text-green-400' : 'bg-dark-600 text-gray-600'}`}>{label}</span>
+                                ))}
+                              </div>
+                              {daysAgo !== null && <span className={`text-xs ${daysAgo > 7 ? 'text-red-400' : daysAgo > 3 ? 'text-amber-400' : 'text-gray-500'}`}>{daysAgo === 0 ? 'today' : daysAgo + 'd ago'}</span>}
+                            </div>
+
+                            {/* Last call log */}
+                            {lastCall && (
+                              <div className="mt-1.5 text-xs bg-dark-700 rounded px-1.5 py-1">
+                                <div className="flex items-center justify-between">
+                                  <span className={`font-medium ${lastCall.outcome === 'connected' ? 'text-green-400' : lastCall.outcome === 'voicemail' ? 'text-amber-400' : lastCall.outcome === 'no_answer' ? 'text-red-400' : 'text-gray-400'}`}>
+                                    {lastCall.outcome === 'connected' ? 'Connected' : lastCall.outcome === 'voicemail' ? 'Voicemail' : lastCall.outcome === 'no_answer' ? 'No Answer' : 'Called'}
+                                  </span>
+                                  <span className="text-gray-600">{new Date(lastCall.date).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}</span>
+                                </div>
+                                {lastCall.note && <div className="text-gray-400 truncate mt-0.5">Last note: {lastCall.note}</div>}
+                              </div>
+                            )}
+
+                            {/* Log a call button + dropdown */}
+                            <div className="mt-1.5">
+                              {!logOpen ? (
+                                <button onClick={e => { e.stopPropagation(); setLogOpen(true); }}
+                                  className="text-xs text-gray-500 hover:text-navy-400 flex items-center gap-1">
+                                  <span>&#9743;</span> Log a call
+                                </button>
+                              ) : (
+                                <div onClick={e => e.stopPropagation()} className="bg-dark-700 rounded-lg p-2 space-y-1.5 fade-in">
+                                  <select value={logOutcome} onChange={e => setLogOutcome(e.target.value)} className="w-full px-2 py-1 rounded border text-xs">
+                                    <option value="called">Called</option>
+                                    <option value="connected">Connected</option>
+                                    <option value="voicemail">Left Voicemail</option>
+                                    <option value="no_answer">No Answer</option>
+                                  </select>
+                                  <input value={logNote} onChange={e => setLogNote(e.target.value)} placeholder="Quick note..." className="w-full px-2 py-1 rounded border text-xs" />
+                                  <div className="flex gap-1">
+                                    <button onClick={submitLog} className="text-xs px-2 py-0.5 rounded bg-navy-600 text-white hover:bg-navy-500">Save</button>
+                                    <button onClick={e => { e.stopPropagation(); setLogOpen(false); }} className="text-xs px-2 py-0.5 rounded text-gray-500 hover:text-white">Cancel</button>
+                                  </div>
+                                </div>
+                              )}
+                            </div>
+
+                            <div className="flex gap-1.5 mt-2">
+                              {idx > 0 && <button onClick={e => { e.stopPropagation(); moveToStage(a, idx - 1); }}
+                                className="text-xs text-gray-500 hover:text-white px-1.5 py-1 rounded bg-dark-600 hover:bg-dark-500">&#8592;</button>}
+                              {idx === 0 ? (
+                                <span className="flex-1 text-xs text-gray-600 text-center py-1">Send Letter to move to Outreach</span>
+                              ) : idx < STAGES.length - 1 && <button onClick={e => { e.stopPropagation(); moveToStage(a, idx + 1); }}
+                                className="flex-1 text-xs font-medium py-1 rounded text-white hover:brightness-110 transition-all" style={{ background: STAGES[idx + 1].color + '44', color: STAGES[idx + 1].color }}>
+                                {STAGES[idx + 1].name} &#8594;
+                              </button>}
+                            </div>
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+          {selected && <AttorneyDetail attorney={selected} onClose={() => setSelectedId(null)} />}
+        </div>
+      );
+    }
+
+    // ========== SEMINARS ==========
+    function Seminars() {
+      const { state, dispatch } = useStore();
+      const [showAdd, setShowAdd] = useState(false);
+      const [editId, setEditId] = useState(null);
+      const [form, setForm] = useState({ title: '', venue: 'AAA', venueNotes: '', date: '', attorneyId: '', expectedAttendance: '' });
+      const set = (k, v) => setForm(p => ({ ...p, [k]: v }));
+
+      const approvedAttorneys = state.attorneys.filter(a => a.stage >= 5);
+
+      function addSeminar() {
+        const seminar = {
+          id: genId(), ...form,
+          expectedAttendance: parseInt(form.expectedAttendance) || 0,
+          complianceReviewed: false,
+          promoChecklist: { aaaEmail: false, inBranchFlyers: false, newsletter: false, websiteListing: false, socialMedia: false, reminder2Weeks: false, reminder1Week: false, reminder1Day: false },
+          actualAttendance: 0, consultationsBooked: 0, consultationsCompleted: 0, clientsConverted: 0,
+          eventNotes: '', status: 'planning'
+        };
+        dispatch({ type: 'ADD_SEMINAR', payload: seminar });
+        setForm({ title: '', venue: 'AAA', venueNotes: '', date: '', attorneyId: '', expectedAttendance: '' });
+        setShowAdd(false);
+      }
+
+      const editing = editId ? state.seminars.find(s => s.id === editId) : null;
+      function updateSeminar(changes) { dispatch({ type: 'UPDATE_SEMINAR', payload: { id: editId, ...changes } }); }
+
+      const promoLabels = {
+        aaaEmail: 'AAA member email blast', inBranchFlyers: 'In-branch flyers/signage', newsletter: 'Newsletter inclusion',
+        websiteListing: 'Website event listing', socialMedia: 'Social media posts',
+        reminder2Weeks: '2-week reminder sent', reminder1Week: '1-week reminder sent', reminder1Day: '1-day reminder sent'
+      };
+
+      return (
+        <div className="fade-in">
+          <div className="flex items-center justify-between mb-4">
+            <h1 className="text-2xl font-bold">Seminars</h1>
+            <button onClick={() => setShowAdd(true)} className="px-3 py-2 rounded-lg text-sm bg-navy-600 hover:bg-navy-500 text-white font-medium">+ New Seminar</button>
+          </div>
+
+          <div className="space-y-2">
+            {state.seminars.length === 0 ? (
+              <div className="bg-dark-800 rounded-xl border border-dark-600 p-8 text-center text-gray-500">No seminars yet. Create one to get started.</div>
+            ) : state.seminars.map(s => {
+              const atty = state.attorneys.find(a => a.id === s.attorneyId);
+              return (
+                <div key={s.id} onClick={() => setEditId(s.id)} className="bg-dark-800 rounded-xl border border-dark-600 p-4 hover:border-dark-500 cursor-pointer transition-colors">
+                  <div className="flex items-center gap-3">
+                    <div className="flex-1">
+                      <div className="font-medium">{s.title}</div>
+                      <div className="text-sm text-gray-400">{s.venue} — {s.date} {atty ? `— ${atty.firstName} ${atty.lastName}` : ''}</div>
+                    </div>
+                    <span className={`text-xs px-2 py-1 rounded capitalize font-medium ${s.status === 'completed' ? 'bg-green-500/20 text-green-400' : s.status === 'cancelled' ? 'bg-red-500/20 text-red-400' : s.status === 'promoted' ? 'bg-purple-500/20 text-purple-400' : 'bg-blue-500/20 text-blue-400'}`}>{s.status}</span>
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+
+          <Modal open={showAdd} onClose={() => setShowAdd(false)} title="New Seminar">
+            <div className="space-y-3">
+              <div>
+                <label className="text-xs text-gray-400 mb-1 block">Topic</label>
+                <select value={form.title} onChange={e => set('title', e.target.value)} className="w-full px-3 py-2 rounded-lg border text-sm">
+                  <option value="">Select a topic...</option>
+                  {SEMINAR_TOPICS.map(t => <option key={t} value={t}>{t}</option>)}
+                  <option value="__custom">Custom topic...</option>
+                </select>
+                {form.title === '__custom' && <input value="" onChange={e => set('title', e.target.value)} placeholder="Enter custom topic" className="w-full px-3 py-2 rounded-lg border text-sm mt-2" />}
+              </div>
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="text-xs text-gray-400 mb-1 block">Venue</label>
+                  <select value={form.venue} onChange={e => set('venue', e.target.value)} className="w-full px-3 py-2 rounded-lg border text-sm">
+                    <option value="AAA">AAA</option>
+                    <option value="Total Wine">Total Wine</option>
+                    <option value="Other">Other</option>
+                  </select>
+                </div>
+                <div>
+                  <label className="text-xs text-gray-400 mb-1 block">Date</label>
+                  <input type="date" value={form.date} onChange={e => set('date', e.target.value)} className="w-full px-3 py-2 rounded-lg border text-sm" />
+                </div>
+              </div>
+              {form.venue === 'Other' && <div>
+                <label className="text-xs text-gray-400 mb-1 block">Venue Notes</label>
+                <input value={form.venueNotes} onChange={e => set('venueNotes', e.target.value)} className="w-full px-3 py-2 rounded-lg border text-sm" />
+              </div>}
+              <div>
+                <label className="text-xs text-gray-400 mb-1 block">Attorney Partner</label>
+                <select value={form.attorneyId} onChange={e => set('attorneyId', e.target.value)} className="w-full px-3 py-2 rounded-lg border text-sm">
+                  <option value="">Select approved attorney...</option>
+                  {approvedAttorneys.map(a => <option key={a.id} value={a.id}>{a.firstName} {a.lastName} — {a.firmName}</option>)}
+                </select>
+              </div>
+              <div>
+                <label className="text-xs text-gray-400 mb-1 block">Expected Attendance</label>
+                <input type="number" value={form.expectedAttendance} onChange={e => set('expectedAttendance', e.target.value)} className="w-full px-3 py-2 rounded-lg border text-sm" />
+              </div>
+              <div className="flex justify-end pt-2">
+                <button onClick={addSeminar} className="px-4 py-2 rounded-lg text-sm font-semibold bg-navy-600 hover:bg-navy-500 text-white">Create Seminar</button>
+              </div>
+            </div>
+          </Modal>
+
+          <Modal open={!!editing} onClose={() => setEditId(null)} title={editing?.title || ''} wide>
+            {editing && (
+              <div className="space-y-4">
+                <div className="grid grid-cols-3 gap-3 text-sm">
+                  <div><span className="text-gray-400">Venue:</span> <span className="ml-1">{editing.venue}</span></div>
+                  <div><span className="text-gray-400">Date:</span> <span className="ml-1">{editing.date}</span></div>
+                  <div><span className="text-gray-400">Expected:</span> <span className="ml-1">{editing.expectedAttendance}</span></div>
+                </div>
+                <div>
+                  <label className="text-xs text-gray-400 mb-1 block">Status</label>
+                  <select value={editing.status} onChange={e => updateSeminar({ status: e.target.value })} className="px-3 py-2 rounded-lg border text-sm">
+                    <option value="planning">Planning</option>
+                    <option value="promoted">Promoted</option>
+                    <option value="completed">Completed</option>
+                    <option value="cancelled">Cancelled</option>
+                  </select>
+                </div>
+                <label className="flex items-center gap-3 text-sm p-3 bg-dark-700 rounded-lg">
+                  <input type="checkbox" checked={editing.complianceReviewed} onChange={e => updateSeminar({ complianceReviewed: e.target.checked })} />
+                  Presentation content reviewed and approved
+                </label>
+                <div>
+                  <h3 className="text-sm font-semibold text-gray-400 mb-2">Promotional Checklist</h3>
+                  <div className="space-y-1">
+                    {Object.entries(promoLabels).map(([key, label]) => (
+                      <label key={key} className="flex items-center gap-3 text-sm p-2 bg-dark-700 rounded-lg">
+                        <input type="checkbox" checked={editing.promoChecklist[key]} onChange={e => {
+                          updateSeminar({ promoChecklist: { ...editing.promoChecklist, [key]: e.target.checked } });
+                        }} />
+                        {label}
+                      </label>
+                    ))}
+                  </div>
+                  <div className="mt-2 h-1.5 bg-dark-700 rounded-full overflow-hidden">
+                    <div className="h-full bg-purple-500 rounded-full transition-all" style={{ width: `${(Object.values(editing.promoChecklist).filter(Boolean).length / 8) * 100}%` }} />
+                  </div>
+                </div>
+                <div>
+                  <h3 className="text-sm font-semibold text-gray-400 mb-2">Post-Event Metrics</h3>
+                  <div className="grid grid-cols-2 gap-3">
+                    <div><label className="text-xs text-gray-400">Actual Attendance</label><input type="number" value={editing.actualAttendance || ''} onChange={e => updateSeminar({ actualAttendance: parseInt(e.target.value) || 0 })} className="w-full px-3 py-2 rounded-lg border text-sm mt-1" /></div>
+                    <div><label className="text-xs text-gray-400">Consultations Booked</label><input type="number" value={editing.consultationsBooked || ''} onChange={e => updateSeminar({ consultationsBooked: parseInt(e.target.value) || 0 })} className="w-full px-3 py-2 rounded-lg border text-sm mt-1" /></div>
+                    <div><label className="text-xs text-gray-400">Consultations Completed</label><input type="number" value={editing.consultationsCompleted || ''} onChange={e => updateSeminar({ consultationsCompleted: parseInt(e.target.value) || 0 })} className="w-full px-3 py-2 rounded-lg border text-sm mt-1" /></div>
+                    <div><label className="text-xs text-gray-400">Clients Converted</label><input type="number" value={editing.clientsConverted || ''} onChange={e => updateSeminar({ clientsConverted: parseInt(e.target.value) || 0 })} className="w-full px-3 py-2 rounded-lg border text-sm mt-1" /></div>
+                  </div>
+                </div>
+                <div><label className="text-xs text-gray-400 mb-1 block">Event Notes</label><textarea value={editing.eventNotes || ''} onChange={e => updateSeminar({ eventNotes: e.target.value })} rows={3} className="w-full px-3 py-2 rounded-lg border text-sm" /></div>
+                <div className="border-t border-dark-600 pt-3 flex justify-end">
+                  <button onClick={() => { dispatch({ type: 'DELETE_SEMINAR', payload: editId }); setEditId(null); }}
+                    className="px-3 py-1.5 rounded-lg text-xs text-red-400 hover:bg-red-500/10">Delete Seminar</button>
+                </div>
+              </div>
+            )}
+          </Modal>
+        </div>
+      );
+    }
+
+    // ========== ATTENDEE PIPELINE ==========
+    function AttendeePipeline() {
+      const { state, dispatch } = useStore();
+      const [showAdd, setShowAdd] = useState(false);
+      const [editId, setEditId] = useState(null);
+      const [form, setForm] = useState({ firstName: '', lastName: '', email: '', phone: '', seminarId: '', notes: '', productInterest: 'IUL', estimatedPremium: '' });
+      const set = (k, v) => setForm(p => ({ ...p, [k]: v }));
+
+      function addAttendee() {
+        const attendee = {
+          id: genId(), ...form,
+          estimatedPremium: parseFloat(form.estimatedPremium) || 0,
+          stage: 0,
+          followUpDate: '',
+          consultationDate: '',
+          proposalDate: '',
+          closedDate: '',
+          policyNumber: '',
+          annualPremium: 0,
+          addedAt: new Date().toISOString()
+        };
+        dispatch({ type: 'ADD_ATTENDEE', payload: attendee });
+        setForm({ firstName: '', lastName: '', email: '', phone: '', seminarId: '', notes: '', productInterest: 'IUL', estimatedPremium: '' });
+        setShowAdd(false);
+      }
+
+      const editing = editId ? state.attendees.find(a => a.id === editId) : null;
+      function updateAttendee(changes) { dispatch({ type: 'UPDATE_ATTENDEE', payload: { id: editId, ...changes } }); }
+
+      const completedSeminars = state.seminars.filter(s => s.status === 'completed' || s.status === 'promoted' || s.status === 'planning');
+
+      return (
+        <div className="fade-in">
+          <div className="flex items-center justify-between mb-4">
+            <h1 className="text-2xl font-bold">Attendee Pipeline</h1>
+            <button onClick={() => setShowAdd(true)} className="px-3 py-2 rounded-lg text-sm bg-navy-600 hover:bg-navy-500 text-white font-medium">+ Add Attendee</button>
+          </div>
+
+          {/* Pipeline Board */}
+          <div className="flex gap-3 overflow-x-auto pb-4">
+            {ATTENDEE_STAGES.map((stage, idx) => {
+              const cards = state.attendees.filter(a => a.stage === idx);
+              return (
+                <div key={idx} className="min-w-[180px] flex-shrink-0">
+                  <div className="flex items-center gap-2 mb-2 px-1">
+                    <div className="w-2 h-2 rounded-full" style={{ background: stage.color }} />
+                    <span className="text-sm font-semibold">{stage.name}</span>
+                    <span className="text-xs text-gray-500 ml-auto">{cards.length}</span>
+                  </div>
+                  <div className="space-y-2 min-h-[180px] bg-dark-800/50 rounded-xl p-2 border border-dark-600/50">
+                    {cards.map(a => {
+                      const sem = state.seminars.find(s => s.id === a.seminarId);
+                      return (
+                        <div key={a.id} onClick={() => setEditId(a.id)} className="bg-dark-800 p-3 rounded-lg border border-dark-600 hover:border-dark-500 cursor-pointer transition-colors">
+                          <div className="text-sm font-medium">{a.firstName} {a.lastName}</div>
+                          {sem && <div className="text-xs text-gray-500 truncate mt-0.5">{sem.title}</div>}
+                          <div className="flex items-center justify-between mt-2">
+                            <span className="text-xs text-gray-400">{a.productInterest}</span>
+                            {a.estimatedPremium > 0 && <span className="text-xs text-green-400">${a.estimatedPremium.toLocaleString()}</span>}
+                          </div>
+                          <div className="flex gap-1 mt-2">
+                            {idx > 0 && <button onClick={e => { e.stopPropagation(); dispatch({ type: 'UPDATE_ATTENDEE', payload: { id: a.id, stage: idx - 1 } }); }} className="text-xs text-gray-500 hover:text-white px-1">&#8592;</button>}
+                            {idx < ATTENDEE_STAGES.length - 1 && <button onClick={e => { e.stopPropagation(); dispatch({ type: 'UPDATE_ATTENDEE', payload: { id: a.id, stage: idx + 1 } }); }} className="text-xs text-gray-500 hover:text-white px-1 ml-auto">&#8594;</button>}
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+
+          {/* Add Modal */}
+          <Modal open={showAdd} onClose={() => setShowAdd(false)} title="Add Attendee">
+            <div className="space-y-3">
+              <div className="grid grid-cols-2 gap-3">
+                <div><label className="text-xs text-gray-400 mb-1 block">First Name</label><input value={form.firstName} onChange={e => set('firstName', e.target.value)} className="w-full px-3 py-2 rounded-lg border text-sm" /></div>
+                <div><label className="text-xs text-gray-400 mb-1 block">Last Name</label><input value={form.lastName} onChange={e => set('lastName', e.target.value)} className="w-full px-3 py-2 rounded-lg border text-sm" /></div>
+              </div>
+              <div className="grid grid-cols-2 gap-3">
+                <div><label className="text-xs text-gray-400 mb-1 block">Email</label><input type="email" value={form.email} onChange={e => set('email', e.target.value)} className="w-full px-3 py-2 rounded-lg border text-sm" /></div>
+                <div><label className="text-xs text-gray-400 mb-1 block">Phone</label><input type="tel" value={form.phone} onChange={e => set('phone', e.target.value)} className="w-full px-3 py-2 rounded-lg border text-sm" /></div>
+              </div>
+              <div>
+                <label className="text-xs text-gray-400 mb-1 block">From Seminar</label>
+                <select value={form.seminarId} onChange={e => set('seminarId', e.target.value)} className="w-full px-3 py-2 rounded-lg border text-sm">
+                  <option value="">Select seminar...</option>
+                  {completedSeminars.map(s => <option key={s.id} value={s.id}>{s.title} — {s.date}</option>)}
+                </select>
+              </div>
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="text-xs text-gray-400 mb-1 block">Product Interest</label>
+                  <select value={form.productInterest} onChange={e => set('productInterest', e.target.value)} className="w-full px-3 py-2 rounded-lg border text-sm">
+                    <option value="IUL">IUL</option>
+                    <option value="Annuity">Annuity</option>
+                    <option value="Both">Both</option>
+                    <option value="Undecided">Undecided</option>
+                  </select>
+                </div>
+                <div><label className="text-xs text-gray-400 mb-1 block">Est. Annual Premium</label><input type="number" value={form.estimatedPremium} onChange={e => set('estimatedPremium', e.target.value)} placeholder="$" className="w-full px-3 py-2 rounded-lg border text-sm" /></div>
+              </div>
+              <div><label className="text-xs text-gray-400 mb-1 block">Notes</label><textarea value={form.notes} onChange={e => set('notes', e.target.value)} rows={2} className="w-full px-3 py-2 rounded-lg border text-sm" /></div>
+              <div className="flex justify-end pt-2">
+                <button onClick={addAttendee} className="px-4 py-2 rounded-lg text-sm font-semibold bg-navy-600 hover:bg-navy-500 text-white">Add Attendee</button>
+              </div>
+            </div>
+          </Modal>
+
+          {/* Edit Modal */}
+          <Modal open={!!editing} onClose={() => setEditId(null)} title={editing ? `${editing.firstName} ${editing.lastName}` : ''} wide>
+            {editing && (
+              <div className="space-y-4">
+                <div className="flex items-center gap-3 mb-2">
+                  <span className="text-xs font-medium px-2 py-0.5 rounded" style={{ background: ATTENDEE_STAGES[editing.stage].color + '22', color: ATTENDEE_STAGES[editing.stage].color }}>{ATTENDEE_STAGES[editing.stage].name}</span>
+                  <span className="text-sm text-gray-400">{editing.productInterest}</span>
+                  {editing.estimatedPremium > 0 && <span className="text-sm text-green-400 ml-auto">${editing.estimatedPremium.toLocaleString()} est.</span>}
+                </div>
+                <div>
+                  <label className="text-xs text-gray-400 mb-1 block">Stage</label>
+                  <select value={editing.stage} onChange={e => updateAttendee({ stage: parseInt(e.target.value) })} className="px-3 py-2 rounded-lg border text-sm">
+                    {ATTENDEE_STAGES.map((s, i) => <option key={i} value={i}>{s.name}</option>)}
+                  </select>
+                </div>
+                <div className="grid grid-cols-2 gap-3 text-sm">
+                  <div><label className="text-xs text-gray-400">Email</label><div className="mt-1">{editing.email || '—'}</div></div>
+                  <div><label className="text-xs text-gray-400">Phone</label><div className="mt-1">{editing.phone || '—'}</div></div>
+                </div>
+                <div className="grid grid-cols-2 gap-3">
+                  <div>
+                    <label className="text-xs text-gray-400 mb-1 block">Product Interest</label>
+                    <select value={editing.productInterest} onChange={e => updateAttendee({ productInterest: e.target.value })} className="w-full px-3 py-2 rounded-lg border text-sm">
+                      <option value="IUL">IUL</option>
+                      <option value="Annuity">Annuity</option>
+                      <option value="Both">Both</option>
+                      <option value="Undecided">Undecided</option>
+                    </select>
+                  </div>
+                  <div><label className="text-xs text-gray-400 mb-1 block">Est. Annual Premium</label><input type="number" value={editing.estimatedPremium || ''} onChange={e => updateAttendee({ estimatedPremium: parseFloat(e.target.value) || 0 })} className="w-full px-3 py-2 rounded-lg border text-sm" /></div>
+                </div>
+                <div className="grid grid-cols-2 gap-3">
+                  <div><label className="text-xs text-gray-400 mb-1 block">Follow-Up Date</label><input type="date" value={editing.followUpDate || ''} onChange={e => updateAttendee({ followUpDate: e.target.value })} className="w-full px-3 py-2 rounded-lg border text-sm" /></div>
+                  <div><label className="text-xs text-gray-400 mb-1 block">Consultation Date</label><input type="date" value={editing.consultationDate || ''} onChange={e => updateAttendee({ consultationDate: e.target.value })} className="w-full px-3 py-2 rounded-lg border text-sm" /></div>
+                </div>
+                <div className="grid grid-cols-2 gap-3">
+                  <div><label className="text-xs text-gray-400 mb-1 block">Policy Number</label><input value={editing.policyNumber || ''} onChange={e => updateAttendee({ policyNumber: e.target.value })} className="w-full px-3 py-2 rounded-lg border text-sm" placeholder="If policy active" /></div>
+                  <div><label className="text-xs text-gray-400 mb-1 block">Annual Premium</label><input type="number" value={editing.annualPremium || ''} onChange={e => updateAttendee({ annualPremium: parseFloat(e.target.value) || 0 })} className="w-full px-3 py-2 rounded-lg border text-sm" /></div>
+                </div>
+                <div><label className="text-xs text-gray-400 mb-1 block">Notes</label><textarea value={editing.notes || ''} onChange={e => updateAttendee({ notes: e.target.value })} rows={3} className="w-full px-3 py-2 rounded-lg border text-sm" /></div>
+                <div className="border-t border-dark-600 pt-3 flex justify-end">
+                  <button onClick={() => { dispatch({ type: 'DELETE_ATTENDEE', payload: editId }); setEditId(null); }}
+                    className="px-3 py-1.5 rounded-lg text-xs text-red-400 hover:bg-red-500/10">Delete Attendee</button>
+                </div>
+              </div>
+            )}
+          </Modal>
+        </div>
+      );
+    }
+
+    // ========== ANALYTICS ==========
+    function Analytics() {
+      const { state } = useStore();
+      const { attorneys, seminars, attendees } = state;
+
+      const completed = seminars.filter(s => s.status === 'completed');
+      const totalAttendance = completed.reduce((s, e) => s + (e.actualAttendance || 0), 0);
+      const totalConsultations = completed.reduce((s, e) => s + (e.consultationsBooked || 0), 0);
+      const totalConsultationsDone = completed.reduce((s, e) => s + (e.consultationsCompleted || 0), 0);
+      const totalConverted = completed.reduce((s, e) => s + (e.clientsConverted || 0), 0);
+      const totalExpected = completed.reduce((s, e) => s + (e.expectedAttendance || 0), 0);
+
+      // Funnel rates
+      const attendToConsult = totalAttendance > 0 ? ((totalConsultations / totalAttendance) * 100).toFixed(1) : 0;
+      const consultToClose = totalConsultations > 0 ? ((totalConverted / totalConsultations) * 100).toFixed(1) : 0;
+      const attendToClose = totalAttendance > 0 ? ((totalConverted / totalAttendance) * 100).toFixed(1) : 0;
+      const showRate = totalExpected > 0 ? ((totalAttendance / totalExpected) * 100).toFixed(1) : 0;
+
+      // Revenue from attendee pipeline
+      const totalPipelineRevenue = attendees.filter(a => a.stage >= 5).reduce((s, a) => s + (a.annualPremium || 0), 0);
+      const totalEstPipeline = attendees.reduce((s, a) => s + (a.estimatedPremium || 0), 0);
+      const clientsWon = attendees.filter(a => a.stage >= 5).length;
+      const policyActive = attendees.filter(a => a.stage >= 6).length;
+
+      // Seminar performance data for chart
+      const seminarChartData = completed.slice(-8).map(s => ({
+        label: s.date ? s.date.slice(5) : '?',
+        value: s.actualAttendance || 0,
+        color: '#4f6ef7'
+      }));
+
+      // Attorney pipeline chart
+      const pipelineChartData = STAGES.map((s, i) => ({
+        label: s.name.split(' ')[0],
+        value: attorneys.filter(a => a.stage === i).length,
+        color: s.color
+      }));
+
+      // Attendee funnel chart
+      const funnelData = ATTENDEE_STAGES.map((s, i) => ({
+        label: s.name.split(' ')[0],
+        value: attendees.filter(a => a.stage === i).length,
+        color: s.color
+      }));
+
+      // Product interest breakdown
+      const productCounts = { IUL: 0, Annuity: 0, Both: 0, Undecided: 0 };
+      attendees.forEach(a => { productCounts[a.productInterest] = (productCounts[a.productInterest] || 0) + 1; });
+
+      // Venue breakdown
+      const venueCounts = {};
+      completed.forEach(s => { venueCounts[s.venue] = (venueCounts[s.venue] || 0) + 1; });
+
+      return (
+        <div className="fade-in space-y-6">
+          <h1 className="text-2xl font-bold">Analytics</h1>
+
+          {/* Key Metrics */}
+          <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+            <div className="bg-dark-800 rounded-xl p-4 border border-dark-600">
+              <div className="text-3xl font-bold">{completed.length}</div>
+              <div className="text-sm text-gray-400">Seminars Completed</div>
+            </div>
+            <div className="bg-dark-800 rounded-xl p-4 border border-dark-600">
+              <div className="text-3xl font-bold">{totalAttendance}</div>
+              <div className="text-sm text-gray-400">Total Attendees</div>
+            </div>
+            <div className="bg-dark-800 rounded-xl p-4 border border-dark-600">
+              <div className="text-3xl font-bold text-green-400">{clientsWon}</div>
+              <div className="text-sm text-gray-400">Clients Won</div>
+            </div>
+            <div className="bg-dark-800 rounded-xl p-4 border border-dark-600">
+              <div className="text-3xl font-bold text-emerald-400">${totalPipelineRevenue.toLocaleString()}</div>
+              <div className="text-sm text-gray-400">Annual Premium (Active)</div>
+            </div>
+          </div>
+
+          {/* Conversion Funnel */}
+          <div className="bg-dark-800 rounded-xl p-5 border border-dark-600">
+            <h3 className="text-sm font-semibold text-gray-400 mb-4">Seminar Conversion Funnel</h3>
+            <div className="flex items-center gap-2">
+              {[
+                { label: 'Expected', val: totalExpected, color: '#64748b' },
+                { label: 'Attended', val: totalAttendance, color: '#3b82f6' },
+                { label: 'Consult Booked', val: totalConsultations, color: '#8b5cf6' },
+                { label: 'Consult Done', val: totalConsultationsDone, color: '#f59e0b' },
+                { label: 'Converted', val: totalConverted, color: '#22c55e' }
+              ].map((step, i, arr) => (
+                <React.Fragment key={i}>
+                  <div className="flex-1 text-center">
+                    <div className="text-2xl font-bold" style={{ color: step.color }}>{step.val}</div>
+                    <div className="text-xs text-gray-500 mt-1">{step.label}</div>
+                    {i > 0 && arr[i-1].val > 0 && (
+                      <div className="text-xs text-gray-600 mt-0.5">{((step.val / arr[i-1].val) * 100).toFixed(0)}%</div>
+                    )}
+                  </div>
+                  {i < arr.length - 1 && <div className="text-gray-600">&#8594;</div>}
+                </React.Fragment>
+              ))}
+            </div>
+          </div>
+
+          {/* Rate Cards */}
+          <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+            <div className="bg-dark-800 rounded-xl p-4 border border-dark-600">
+              <div className="text-2xl font-bold text-blue-400">{showRate}%</div>
+              <div className="text-xs text-gray-400">Show Rate</div>
+            </div>
+            <div className="bg-dark-800 rounded-xl p-4 border border-dark-600">
+              <div className="text-2xl font-bold text-purple-400">{attendToConsult}%</div>
+              <div className="text-xs text-gray-400">Attend → Consult</div>
+            </div>
+            <div className="bg-dark-800 rounded-xl p-4 border border-dark-600">
+              <div className="text-2xl font-bold text-amber-400">{consultToClose}%</div>
+              <div className="text-xs text-gray-400">Consult → Close</div>
+            </div>
+            <div className="bg-dark-800 rounded-xl p-4 border border-dark-600">
+              <div className="text-2xl font-bold text-green-400">{attendToClose}%</div>
+              <div className="text-xs text-gray-400">Attend → Close</div>
+            </div>
+          </div>
+
+          {/* Charts Row */}
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            <div className="bg-dark-800 rounded-xl p-5 border border-dark-600">
+              <h3 className="text-sm font-semibold text-gray-400 mb-4">Attendance by Seminar</h3>
+              {seminarChartData.length > 0 ? <BarChart data={seminarChartData} /> : <div className="text-gray-500 text-sm text-center py-8">No completed seminars yet</div>}
+            </div>
+            <div className="bg-dark-800 rounded-xl p-5 border border-dark-600">
+              <h3 className="text-sm font-semibold text-gray-400 mb-4">Attorney Pipeline</h3>
+              <BarChart data={pipelineChartData} />
+            </div>
+          </div>
+
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            <div className="bg-dark-800 rounded-xl p-5 border border-dark-600">
+              <h3 className="text-sm font-semibold text-gray-400 mb-4">Attendee Sales Funnel</h3>
+              {attendees.length > 0 ? <BarChart data={funnelData} /> : <div className="text-gray-500 text-sm text-center py-8">No attendees tracked yet</div>}
+            </div>
+            <div className="bg-dark-800 rounded-xl p-5 border border-dark-600">
+              <h3 className="text-sm font-semibold text-gray-400 mb-4">Product Interest</h3>
+              <div className="space-y-3 mt-2">
+                {Object.entries(productCounts).map(([product, count]) => (
+                  <div key={product} className="flex items-center gap-3">
+                    <span className="text-sm w-20">{product}</span>
+                    <div className="flex-1 h-6 bg-dark-700 rounded-full overflow-hidden">
+                      <div className="h-full rounded-full transition-all" style={{
+                        width: attendees.length > 0 ? `${(count / attendees.length) * 100}%` : '0%',
+                        background: product === 'IUL' ? '#4f6ef7' : product === 'Annuity' ? '#f59e0b' : product === 'Both' ? '#22c55e' : '#64748b'
+                      }} />
+                    </div>
+                    <span className="text-sm font-bold w-8 text-right">{count}</span>
+                  </div>
+                ))}
+              </div>
+            </div>
+          </div>
+
+          {/* Revenue Pipeline */}
+          <div className="bg-dark-800 rounded-xl p-5 border border-dark-600">
+            <h3 className="text-sm font-semibold text-gray-400 mb-4">Revenue Pipeline</h3>
+            <div className="grid grid-cols-3 gap-4 text-center">
+              <div>
+                <div className="text-2xl font-bold text-gray-300">${totalEstPipeline.toLocaleString()}</div>
+                <div className="text-xs text-gray-500 mt-1">Estimated Pipeline</div>
+              </div>
+              <div>
+                <div className="text-2xl font-bold text-green-400">${totalPipelineRevenue.toLocaleString()}</div>
+                <div className="text-xs text-gray-500 mt-1">Won Revenue (Annual)</div>
+              </div>
+              <div>
+                <div className="text-2xl font-bold text-amber-400">{totalEstPipeline > 0 ? ((totalPipelineRevenue / totalEstPipeline) * 100).toFixed(0) : 0}%</div>
+                <div className="text-xs text-gray-500 mt-1">Win Rate (by $)</div>
+              </div>
+            </div>
+          </div>
+
+          {/* Venue Breakdown */}
+          {Object.keys(venueCounts).length > 0 && (
+            <div className="bg-dark-800 rounded-xl p-5 border border-dark-600">
+              <h3 className="text-sm font-semibold text-gray-400 mb-3">Seminars by Venue</h3>
+              <div className="flex gap-4">
+                {Object.entries(venueCounts).map(([venue, count]) => (
+                  <div key={venue} className="flex items-center gap-2">
+                    <div className="w-3 h-3 rounded-full" style={{ background: venue === 'AAA' ? '#4f6ef7' : venue === 'Total Wine' ? '#8b5cf6' : '#64748b' }} />
+                    <span className="text-sm">{venue}</span>
+                    <span className="text-sm font-bold">{count}</span>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+        </div>
+      );
+    }
+
+    // ========== EXPORT VIEW ==========
+    function ExportView() {
+      const { state } = useStore();
+      const [tierFilter, setTierFilter] = useState('All');
+      const [stageFilter, setStageFilter] = useState('All');
+      const [vettingFilter, setVettingFilter] = useState('All');
+
+      const filtered = useMemo(() => {
+        let list = state.attorneys;
+        if (tierFilter !== 'All') list = list.filter(a => getTier(a.score).label === tierFilter);
+        if (stageFilter !== 'All') list = list.filter(a => a.stage === parseInt(stageFilter));
+        if (vettingFilter !== 'All') list = list.filter(a => a.vettingDecision === vettingFilter);
+        return list;
+      }, [state.attorneys, tierFilter, stageFilter, vettingFilter]);
+
+      return (
+        <div className="fade-in">
+          <h1 className="text-2xl font-bold mb-4">Export</h1>
+          <div className="bg-dark-800 rounded-xl border border-dark-600 p-6">
+            <p className="text-sm text-gray-400 mb-4">Export attorneys as CSV formatted for GoHighLevel import.</p>
+            <div className="flex flex-wrap gap-3 mb-4">
+              <select value={tierFilter} onChange={e => setTierFilter(e.target.value)} className="px-3 py-2 rounded-lg border text-sm">
+                <option value="All">All Tiers</option><option value="HOT">Hot</option><option value="WARM">Warm</option><option value="COLD">Cold</option>
+              </select>
+              <select value={stageFilter} onChange={e => setStageFilter(e.target.value)} className="px-3 py-2 rounded-lg border text-sm">
+                <option value="All">All Stages</option>
+                {STAGES.map((s, i) => <option key={i} value={i}>{s.name}</option>)}
+              </select>
+              <select value={vettingFilter} onChange={e => setVettingFilter(e.target.value)} className="px-3 py-2 rounded-lg border text-sm">
+                <option value="All">All Vetting</option><option value="pending">Pending</option><option value="approved">Approved</option><option value="not_approved">Not Approved</option><option value="needs_followup">Needs Follow-up</option>
+              </select>
+            </div>
+            <div className="flex items-center gap-4">
+              <span className="text-sm text-gray-400">{filtered.length} attorneys match filters</span>
+              <button onClick={() => exportCSV(filtered)} disabled={filtered.length === 0}
+                className="px-4 py-2 rounded-lg text-sm font-semibold bg-navy-600 hover:bg-navy-500 text-white disabled:opacity-50 disabled:cursor-not-allowed">
+                Download CSV
+              </button>
+            </div>
+            <div className="mt-4 text-xs text-gray-500">Columns: First Name, Last Name, Firm, Email, Phone, Score, Tier, Stage, City, State, Vetting Decision, Partner Type</div>
+          </div>
+        </div>
+      );
+    }
+
+    // ========== LAYOUT ==========
+    const NAV_ITEMS = [
+      { id: 'dashboard', label: 'Dashboard', icon: '◉' },
+      { id: 'attorneys', label: 'Attorneys', icon: '◈' },
+      { id: 'pipeline', label: 'Pipeline', icon: '▸' },
+      { id: 'seminars', label: 'Seminars', icon: '◎' },
+      { id: 'attendees', label: 'Attendees', icon: '◇' },
+      { id: 'analytics', label: 'Analytics', icon: '▤' },
+      { id: 'export', label: 'Export', icon: '↓' }
+    ];
+
+    function App() {
+      const [view, setView] = useState('dashboard');
+
+      return (
+        <StoreProvider>
+          <div className="flex h-screen">
+            <div className="w-56 bg-dark-800 border-r border-dark-600 flex flex-col flex-shrink-0">
+              <div className="p-4 border-b border-dark-600">
+                <div className="text-lg font-bold text-white">DuetAttorney</div>
+                <div className="text-xs text-gray-500">Prospecting & Vetting CRM</div>
+              </div>
+              <nav className="flex-1 p-2">
+                {NAV_ITEMS.map(item => (
+                  <button key={item.id} onClick={() => setView(item.id)}
+                    className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm mb-0.5 transition-colors ${view === item.id ? 'bg-navy-600/20 text-navy-400 font-medium' : 'text-gray-400 hover:bg-dark-700 hover:text-gray-200'}`}>
+                    <span className="text-base">{item.icon}</span>
+                    {item.label}
+                  </button>
+                ))}
+              </nav>
+              <div className="p-3 border-t border-dark-600 space-y-2">
+                <div className="flex gap-2">
+                  <button onClick={() => {
+                    const backup = {
+                      attorneys: loadStorage('crm_attorneys', []),
+                      seminars: loadStorage('crm_seminars', []),
+                      programSetup: loadStorage('crm_programSetup', {}),
+                      attendees: loadStorage('crm_attendees', []),
+                      feedback: loadStorage('crm_feedback', []),
+                      exportedAt: new Date().toISOString()
+                    };
+                    const blob = new Blob([JSON.stringify(backup, null, 2)], { type: 'application/json' });
+                    const url = URL.createObjectURL(blob);
+                    const a = document.createElement('a');
+                    a.href = url; a.download = `duetattorney-backup-${new Date().toISOString().split('T')[0]}.json`;
+                    a.click(); URL.revokeObjectURL(url);
+                  }} className="flex-1 px-2 py-1.5 text-xs rounded-lg bg-dark-700 border border-dark-600 text-gray-400 hover:text-white hover:border-dark-500">Backup</button>
+                  <button onClick={() => {
+                    const input = document.createElement('input');
+                    input.type = 'file'; input.accept = '.json';
+                    input.onchange = (e) => {
+                      const file = e.target.files[0];
+                      if (!file) return;
+                      const reader = new FileReader();
+                      reader.onload = (ev) => {
+                        try {
+                          const data = JSON.parse(ev.target.result);
+                          if (data.attorneys) { saveStorage('crm_attorneys', data.attorneys); }
+                          if (data.seminars) { saveStorage('crm_seminars', data.seminars); }
+                          if (data.programSetup) { saveStorage('crm_programSetup', data.programSetup); }
+                          if (data.attendees) { saveStorage('crm_attendees', data.attendees); }
+                          if (data.feedback) { saveStorage('crm_feedback', data.feedback); }
+                          window.location.reload();
+                        } catch { alert('Invalid backup file'); }
+                      };
+                      reader.readAsText(file);
+                    };
+                    input.click();
+                  }} className="flex-1 px-2 py-1.5 text-xs rounded-lg bg-dark-700 border border-dark-600 text-gray-400 hover:text-white hover:border-dark-500">Restore</button>
+                </div>
+                <button onClick={() => {
+                  if (confirm('Are you sure you want to reset ALL data? This cannot be undone. Make sure you have a backup first.')) {
+                    if (confirm('This will delete all attorneys, seminars, attendees, and feedback. Really reset?')) {
+                      localStorage.removeItem('crm_attorneys');
+                      localStorage.removeItem('crm_seminars');
+                      localStorage.removeItem('crm_programSetup');
+                      localStorage.removeItem('crm_attendees');
+                      localStorage.removeItem('crm_feedback');
+                      window.location.reload();
+                    }
+                  }
+                }} className="w-full px-2 py-1.5 text-xs rounded-lg border border-red-500/30 text-red-400/60 hover:text-red-400 hover:border-red-500/50">Reset All Data</button>
+                <div className="text-xs text-gray-600">Phase 2 — Download + Analytics</div>
+              </div>
+            </div>
+
+            <div className="flex-1 overflow-y-auto p-6">
+              {view === 'dashboard' && <Dashboard />}
+              {view === 'attorneys' && <AttorneyList />}
+              {view === 'pipeline' && <PipelineBoard />}
+              {view === 'seminars' && <Seminars />}
+              {view === 'attendees' && <AttendeePipeline />}
+              {view === 'analytics' && <Analytics />}
+              {view === 'export' && <ExportView />}
+            </div>
+
+            <FeedbackBubble />
+          </div>
+        </StoreProvider>
+      );
+    }
+
+    // ========== FEEDBACK BUBBLE ==========
+    function FeedbackBubble() {
+      const { state, dispatch } = useStore();
+      const [open, setOpen] = useState(false);
+      const [form, setForm] = useState({ name: '', type: 'suggestion', message: '' });
+      const [submitted, setSubmitted] = useState(false);
+      const feedbackList = loadStorage('crm_feedback', []);
+
+      function handleSubmit() {
+        if (!form.message.trim()) return;
+        const entry = { id: genId(), ...form, date: new Date().toISOString() };
+        const updated = [...feedbackList, entry];
+        saveStorage('crm_feedback', updated);
+        setForm({ name: '', type: 'suggestion', message: '' });
+        setSubmitted(true);
+        setTimeout(() => setSubmitted(false), 3000);
+      }
+
+      return (
+        <div className="fixed bottom-6 right-6 z-50">
+          {open && (
+            <div className="bg-dark-800 rounded-xl shadow-2xl border border-dark-600 w-80 mb-3 fade-in">
+              <div className="flex items-center justify-between p-4 border-b border-dark-600">
+                <h3 className="text-sm font-semibold">Feedback & Suggestions</h3>
+                <button onClick={() => setOpen(false)} className="text-gray-400 hover:text-white text-lg">&times;</button>
+              </div>
+              <div className="p-4 space-y-3">
+                {submitted ? (
+                  <div className="text-center py-6">
+                    <div className="text-3xl mb-2">&#10003;</div>
+                    <div className="text-green-400 font-medium">Thank you!</div>
+                    <div className="text-xs text-gray-500 mt-1">Your feedback has been saved.</div>
+                  </div>
+                ) : (
+                  <>
+                    <div>
+                      <label className="text-xs text-gray-400 mb-1 block">Your Name (optional)</label>
+                      <input value={form.name} onChange={e => setForm(p => ({ ...p, name: e.target.value }))} placeholder="Name" className="w-full px-3 py-2 rounded-lg border text-sm" />
+                    </div>
+                    <div>
+                      <label className="text-xs text-gray-400 mb-1 block">Type</label>
+                      <select value={form.type} onChange={e => setForm(p => ({ ...p, type: e.target.value }))} className="w-full px-3 py-2 rounded-lg border text-sm">
+                        <option value="suggestion">Suggestion</option>
+                        <option value="bug">Bug Report</option>
+                        <option value="feature">Feature Request</option>
+                        <option value="general">General Feedback</option>
+                      </select>
+                    </div>
+                    <div>
+                      <label className="text-xs text-gray-400 mb-1 block">Message</label>
+                      <textarea value={form.message} onChange={e => setForm(p => ({ ...p, message: e.target.value }))} rows={4} placeholder="Share your thoughts, ideas, or report an issue..." className="w-full px-3 py-2 rounded-lg border text-sm" />
+                    </div>
+                    <button onClick={handleSubmit} disabled={!form.message.trim()}
+                      className="w-full px-4 py-2 rounded-lg text-sm font-semibold bg-navy-600 hover:bg-navy-500 text-white disabled:opacity-50 disabled:cursor-not-allowed">Submit Feedback</button>
+                  </>
+                )}
+                {/* Show recent feedback */}
+                {feedbackList.length > 0 && !submitted && (
+                  <div className="border-t border-dark-600 pt-3 mt-2">
+                    <div className="text-xs text-gray-500 mb-2">Recent ({feedbackList.length})</div>
+                    <div className="space-y-1.5 max-h-32 overflow-y-auto">
+                      {[...feedbackList].reverse().slice(0, 5).map(f => (
+                        <div key={f.id} className="bg-dark-700 rounded p-2 text-xs">
+                          <div className="flex items-center justify-between mb-0.5">
+                            <span className={`font-medium capitalize ${f.type === 'bug' ? 'text-red-400' : f.type === 'feature' ? 'text-purple-400' : f.type === 'suggestion' ? 'text-amber-400' : 'text-gray-400'}`}>{f.type}</span>
+                            <span className="text-gray-600">{new Date(f.date).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}</span>
+                          </div>
+                          <div className="text-gray-400 truncate">{f.message}</div>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
+              </div>
+            </div>
+          )}
+          <button onClick={() => { setOpen(!open); setSubmitted(false); }}
+            className="w-12 h-12 rounded-full shadow-lg flex items-center justify-center text-xl transition-transform hover:scale-110" style={{ background: '#534AB7', boxShadow: '0 4px 14px rgba(83,74,183,0.4)' }}
+            title="Feedback & Suggestions">
+            &#128161;
+          </button>
+        </div>
+      );
+    }
+
+    ReactDOM.createRoot(document.getElementById('root')).render(<App />);
+  </script>
+</body>
+</html>
